@@ -20,8 +20,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.drools.compiler.kie.builder.impl.KieBaseUpdater;
+import org.drools.compiler.kie.builder.impl.KieBaseUpdaterOptions;
 import org.drools.compiler.kie.builder.impl.KieBaseUpdatersContext;
+import org.drools.core.impl.InternalKnowledgeBase;
 import org.drools.core.reteoo.Rete;
+import org.kie.api.KieBase;
 import org.kie.api.conf.Option;
 import org.kie.internal.builder.conf.AlphaNetworkCompilerOption;
 import org.kie.memorycompiler.KieMemoryCompiler;
@@ -66,7 +69,7 @@ public class KieBaseUpdaterANC implements KieBaseUpdater {
             // as they are removed by ReteOOBuilder.removeTerminalNode after standard KieBaseUpdaterImpl
             compiledNetworkSourcesMap.values().forEach(c -> {
                 Class<?> aClass = compiledClasses.get(c.getName());
-                c.setCompiledNetwork(aClass);
+                c.createInstanceAndSet(aClass);
             });
         }
     }
@@ -84,7 +87,15 @@ public class KieBaseUpdaterANC implements KieBaseUpdater {
             } catch (ClassNotFoundException e) {
                 throw new CouldNotCreateAlphaNetworkCompilerException(e);
             }
-            kv.getValue().setCompiledNetwork(aClass);
+            kv.getValue().createInstanceAndSet(aClass);
         }
+    }
+
+    public static void generateAndSetInMemoryANC(KieBase kbase) {
+        KieBaseUpdaterOptions kieBaseUpdaterOptions = new KieBaseUpdaterOptions(new KieBaseUpdaterOptions.OptionEntry(
+                AlphaNetworkCompilerOption.class, AlphaNetworkCompilerOption.INMEMORY));
+        KieBaseUpdatersContext context = new KieBaseUpdatersContext(kieBaseUpdaterOptions,
+                (( InternalKnowledgeBase ) kbase).getRete(), (( InternalKnowledgeBase ) kbase).getRootClassLoader());
+        new KieBaseUpdaterANC(context).run();
     }
 }

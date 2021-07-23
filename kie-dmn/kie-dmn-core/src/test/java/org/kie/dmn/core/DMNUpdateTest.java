@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.Matchers.hasSize;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class DMNUpdateTest extends BaseInterpretedVsCompiledTest {
 
@@ -296,7 +296,7 @@ public class DMNUpdateTest extends BaseInterpretedVsCompiledTest {
 
         check0001_input_data_string(runtime);
 
-        // the below is performed by the WB at: https://github.com/kiegroup/kie-wb-common/blob/master/kie-wb-common-services/kie-wb-common-services-backend/src/main/java/org/kie/workbench/common/services/backend/builder/core/Builder.java#L592
+        // the below is performed by the WB at: https://github.com/kiegroup/kie-wb-common/blob/9e6b6da145e61ac8f5a9f7c0259d44aa9d090a2b/kie-wb-common-services/kie-wb-common-services-backend/src/main/java/org/kie/workbench/common/services/backend/builder/core/Builder.java#L592-L620
         final KieProject kieProject = new KieModuleKieProject((InternalKieModule) kieModule, null);
         final KieContainer kieContainer2 = new KieContainerImpl(kieProject, ks.getRepository(), v100);
         final KieSession kieSession2 = kieContainer2.newKieSession(); // exhibit the issue.
@@ -332,7 +332,7 @@ public class DMNUpdateTest extends BaseInterpretedVsCompiledTest {
 
         checkDMNHotColdDMN12WithNSScattered(runtime);
 
-        // the below is performed by the WB at: https://github.com/kiegroup/kie-wb-common/blob/master/kie-wb-common-services/kie-wb-common-services-backend/src/main/java/org/kie/workbench/common/services/backend/builder/core/Builder.java#L592
+        // the below is performed by the WB at: https://github.com/kiegroup/kie-wb-common/blob/9e6b6da145e61ac8f5a9f7c0259d44aa9d090a2b/kie-wb-common-services/kie-wb-common-services-backend/src/main/java/org/kie/workbench/common/services/backend/builder/core/Builder.java#L592-L620
         final KieProject kieProject = new KieModuleKieProject((InternalKieModule) kieModule, null);
         final KieContainer kieContainer2 = new KieContainerImpl(kieProject, ks.getRepository(), v100);
         final KieSession kieSession2 = kieContainer2.newKieSession(); // exhibit the issue.

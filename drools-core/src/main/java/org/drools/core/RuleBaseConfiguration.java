@@ -35,9 +35,11 @@ import org.drools.core.util.ConfFileUtils;
 import org.drools.core.util.StringUtils;
 import org.drools.reflective.classloader.ProjectClassLoader;
 import org.kie.api.KieBaseConfiguration;
+import org.kie.api.conf.BetaRangeIndexOption;
 import org.kie.api.conf.DeclarativeAgendaOption;
 import org.kie.api.conf.EqualityBehaviorOption;
 import org.kie.api.conf.EventProcessingOption;
+import org.kie.api.conf.KieBaseMutabilityOption;
 import org.kie.api.conf.KieBaseOption;
 import org.kie.api.conf.MBeansOption;
 import org.kie.api.conf.MultiValueKieBaseOption;
@@ -95,6 +97,7 @@ import static org.drools.core.util.MemoryUtil.hasPermGen;
  * drools.shareBetaNodes = &lt;true|false&gt;
  * drools.alphaNodeHashingThreshold = &lt;1...n&gt;
  * drools.alphaNodeRangeIndexThreshold = &lt;1...n&gt;
+ * drools.betaNodeRangeIndexEnabled = &lt;true|false&gt;
  * drools.sessionPool = &lt;1...n&gt;
  * drools.compositeKeyDepth = &lt;1..3&gt;
  * drools.indexLeftBetaMemory = &lt;true/false&gt;
@@ -106,8 +109,7 @@ import static org.drools.core.util.MemoryUtil.hasPermGen;
  * drools.sessionClock = &lt;qualified class name&gt;
  * drools.mbeans = &lt;enabled|disabled&gt;
  * drools.classLoaderCacheEnabled = &lt;true|false&gt;
- * drools.phreakEnabled = &lt;true|false&gt;
- * drools.declarativeAgendaEnabled =  &lt;true|false&gt; 
+ * drools.declarativeAgendaEnabled =  &lt;true|false&gt;
  * drools.permgenThreshold = &lt;1...n&gt;
  * drools.jittingThreshold = &lt;1...n&gt;
  * </pre>
@@ -140,6 +142,7 @@ public class RuleBaseConfiguration
     private int             jittingThreshold;
     private int             alphaNodeHashingThreshold;
     private int             alphaNodeRangeIndexThreshold;
+    private boolean         betaNodeRangeIndexEnabled;
     private int             compositeKeyDepth;
     private boolean         indexLeftBetaMemory;
     private boolean         indexRightBetaMemory;
@@ -147,7 +150,7 @@ public class RuleBaseConfiguration
     private String          consequenceExceptionHandler;
     private String          ruleBaseUpdateHandler;
     private boolean         classLoaderCacheEnabled;
-    private boolean         phreakEnabled;
+    private boolean         mutabilityEnabled;
 
     private boolean declarativeAgenda;
 
@@ -186,6 +189,8 @@ public class RuleBaseConfiguration
     }
 
     public void writeExternal(ObjectOutput out) throws IOException {
+        // avoid serializing user defined system properties
+        chainedProperties.filterDroolsPropertiesForSerialization();
         out.writeObject(chainedProperties);
         out.writeBoolean(immutable);
         out.writeBoolean(sequential);
@@ -198,6 +203,7 @@ public class RuleBaseConfiguration
         out.writeInt(jittingThreshold);
         out.writeInt(alphaNodeHashingThreshold);
         out.writeInt(alphaNodeRangeIndexThreshold);
+        out.writeBoolean(betaNodeRangeIndexEnabled);
         out.writeInt(compositeKeyDepth);
         out.writeBoolean(indexLeftBetaMemory);
         out.writeBoolean(indexRightBetaMemory);
@@ -211,10 +217,10 @@ public class RuleBaseConfiguration
         out.writeInt(maxThreads);
         out.writeObject(eventProcessingMode);
         out.writeBoolean(classLoaderCacheEnabled);
-        out.writeBoolean(phreakEnabled);
         out.writeBoolean(declarativeAgenda);
         out.writeObject(componentFactory);
         out.writeInt(sessionPoolSize);
+        out.writeBoolean(mutabilityEnabled);
     }
 
     public void readExternal(ObjectInput in) throws IOException,
@@ -231,6 +237,7 @@ public class RuleBaseConfiguration
         jittingThreshold = in.readInt();
         alphaNodeHashingThreshold = in.readInt();
         alphaNodeRangeIndexThreshold = in.readInt();
+        betaNodeRangeIndexEnabled = in.readBoolean();
         compositeKeyDepth = in.readInt();
         indexLeftBetaMemory = in.readBoolean();
         indexRightBetaMemory = in.readBoolean();
@@ -244,10 +251,10 @@ public class RuleBaseConfiguration
         maxThreads = in.readInt();
         eventProcessingMode = (EventProcessingOption) in.readObject();
         classLoaderCacheEnabled = in.readBoolean();
-        phreakEnabled = in.readBoolean();
         declarativeAgenda = in.readBoolean();
         componentFactory = (KieComponentFactory) in.readObject();
         sessionPoolSize = in.readInt();
+        mutabilityEnabled = in.readBoolean();
     }
 
     /**
@@ -313,6 +320,8 @@ public class RuleBaseConfiguration
             setAlphaNodeHashingThreshold( StringUtils.isEmpty( value ) ? 3 : Integer.parseInt(value));
         } else if ( name.equals( AlphaRangeIndexThresholdOption.PROPERTY_NAME ) ) {
             setAlphaNodeRangeIndexThreshold( StringUtils.isEmpty( value ) ? AlphaRangeIndexThresholdOption.DEFAULT_VALUE : Integer.parseInt(value));
+        } else if ( name.equals( BetaRangeIndexOption.PROPERTY_NAME ) ) {
+            setBetaNodeRangeIndexEnabled( StringUtils.isEmpty( value ) ? false : Boolean.valueOf(value));
         } else if ( name.equals( SessionsPoolOption.PROPERTY_NAME ) ) {
             setSessionPoolSize( StringUtils.isEmpty( value ) ? -1 : Integer.parseInt(value));
         } else if ( name.equals( CompositeKeyDepthOption.PROPERTY_NAME ) ) {
@@ -341,6 +350,8 @@ public class RuleBaseConfiguration
             setMBeansEnabled( MBeansOption.isEnabled(value));
         } else if ( name.equals( ClassLoaderCacheOption.PROPERTY_NAME ) ) {
             setClassLoaderCacheEnabled( StringUtils.isEmpty( value ) ? true : Boolean.valueOf(value));
+        } else if ( name.equals( KieBaseMutabilityOption.PROPERTY_NAME ) ) {
+            setMutabilityEnabled( StringUtils.isEmpty( value ) ? true : KieBaseMutabilityOption.determineMutability(value) == KieBaseMutabilityOption.ALLOWED );
         }
     }
 
@@ -368,6 +379,8 @@ public class RuleBaseConfiguration
             return Integer.toString( getAlphaNodeHashingThreshold() );
         } else if ( name.equals( AlphaRangeIndexThresholdOption.PROPERTY_NAME ) ) {
             return Integer.toString( getAlphaNodeRangeIndexThreshold() );
+        } else if ( name.equals( BetaRangeIndexOption.PROPERTY_NAME ) ) {
+            return Boolean.toString( isBetaNodeRangeIndexEnabled() );
         } else if ( name.equals( SessionsPoolOption.PROPERTY_NAME ) ) {
             return Integer.toString( getSessionPoolSize() );
         } else if ( name.equals( CompositeKeyDepthOption.PROPERTY_NAME ) ) {
@@ -396,6 +409,8 @@ public class RuleBaseConfiguration
             return isMBeansEnabled() ? "enabled" : "disabled";
         } else if ( name.equals( ClassLoaderCacheOption.PROPERTY_NAME ) ) {
             return Boolean.toString( isClassLoaderCacheEnabled() );
+        } else if ( name.equals( KieBaseMutabilityOption.PROPERTY_NAME ) ) {
+            return isMutabilityEnabled() ? "ALLOWED" : "DISABLED";
         }
 
         return null;
@@ -448,6 +463,8 @@ public class RuleBaseConfiguration
 
         setAlphaNodeRangeIndexThreshold(Integer.parseInt(this.chainedProperties.getProperty(AlphaRangeIndexThresholdOption.PROPERTY_NAME, "" + AlphaRangeIndexThresholdOption.DEFAULT_VALUE)));
 
+        setBetaNodeRangeIndexEnabled(Boolean.valueOf(this.chainedProperties.getProperty(BetaRangeIndexOption.PROPERTY_NAME, "false")));
+
         setSessionPoolSize(Integer.parseInt(this.chainedProperties.getProperty( SessionsPoolOption.PROPERTY_NAME, "-1")));
 
         setCompositeKeyDepth(Integer.parseInt(this.chainedProperties.getProperty(CompositeKeyDepthOption.PROPERTY_NAME, "3")));
@@ -488,6 +505,9 @@ public class RuleBaseConfiguration
         
         setDeclarativeAgendaEnabled( Boolean.valueOf( this.chainedProperties.getProperty( DeclarativeAgendaOption.PROPERTY_NAME,
                                                                                           "false" ) ) );
+
+        setMutabilityEnabled( KieBaseMutabilityOption.determineMutability(
+                this.chainedProperties.getProperty( KieBaseMutabilityOption.PROPERTY_NAME, "ALLOWED" )) == KieBaseMutabilityOption.ALLOWED );
     }
 
     /**
@@ -602,6 +622,15 @@ public class RuleBaseConfiguration
     public void setAlphaNodeRangeIndexThreshold(final int alphaNodeRangeIndexThreshold) {
         checkCanChange();
         this.alphaNodeRangeIndexThreshold = alphaNodeRangeIndexThreshold;
+    }
+
+    public boolean isBetaNodeRangeIndexEnabled() {
+        return this.betaNodeRangeIndexEnabled;
+    }
+
+    public void setBetaNodeRangeIndexEnabled(final boolean betaNodeRangeIndexEnabled) {
+        checkCanChange();
+        this.betaNodeRangeIndexEnabled = betaNodeRangeIndexEnabled;
     }
 
     public int getSessionPoolSize() {
@@ -908,6 +937,14 @@ public class RuleBaseConfiguration
         return this.mbeansEnabled;
     }
 
+    public void setMutabilityEnabled( boolean mutabilityEnabled ) {
+        this.mutabilityEnabled = mutabilityEnabled;
+    }
+
+    public boolean isMutabilityEnabled() {
+        return mutabilityEnabled;
+    }
+
     public static class AssertBehaviour
             implements
             Externalizable {
@@ -1126,6 +1163,8 @@ public class RuleBaseConfiguration
             return (T) AlphaThresholdOption.get(alphaNodeHashingThreshold);
         } else if (AlphaRangeIndexThresholdOption.class.equals(option)) {
             return (T) AlphaRangeIndexThresholdOption.get(alphaNodeRangeIndexThreshold);
+        } else if (BetaRangeIndexOption.class.equals(option)) {
+            return (T) (this.betaNodeRangeIndexEnabled ? BetaRangeIndexOption.ENABLED : BetaRangeIndexOption.DISABLED);
         } else if ( SessionsPoolOption.class.equals(option)) {
             return (T) SessionsPoolOption.get(sessionPoolSize);
         } else if (CompositeKeyDepthOption.class.equals(option)) {
@@ -1151,6 +1190,8 @@ public class RuleBaseConfiguration
             return (T) (this.isClassLoaderCacheEnabled() ? ClassLoaderCacheOption.ENABLED : ClassLoaderCacheOption.DISABLED);
         } else if (DeclarativeAgendaOption.class.equals(option)) {
             return (T) (this.isDeclarativeAgenda() ? DeclarativeAgendaOption.ENABLED : DeclarativeAgendaOption.DISABLED);
+        } else if (KieBaseMutabilityOption.class.equals(option)) {
+            return (T) (this.isMutabilityEnabled() ? KieBaseMutabilityOption.ALLOWED : KieBaseMutabilityOption.DISABLED);
         }
         return null;
 
@@ -1183,6 +1224,8 @@ public class RuleBaseConfiguration
             setAlphaNodeHashingThreshold( ( (AlphaThresholdOption) option ).getThreshold());
         } else if (option instanceof AlphaRangeIndexThresholdOption) {
             setAlphaNodeRangeIndexThreshold( ( (AlphaRangeIndexThresholdOption) option ).getThreshold());
+        } else if (option instanceof BetaRangeIndexOption) {
+            setBetaNodeRangeIndexEnabled( ( (BetaRangeIndexOption) option ).isBetaRangeIndexEnabled());
         } else if (option instanceof SessionsPoolOption ) {
             setSessionPoolSize( ( ( SessionsPoolOption ) option ).getSize());
         } else if (option instanceof CompositeKeyDepthOption) {
@@ -1201,6 +1244,8 @@ public class RuleBaseConfiguration
             setClassLoaderCacheEnabled( ( (ClassLoaderCacheOption) option ).isClassLoaderCacheEnabled());
         } else if (option instanceof DeclarativeAgendaOption) {
             setDeclarativeAgendaEnabled(((DeclarativeAgendaOption) option).isDeclarativeAgendaEnabled());
+        } else if (option instanceof KieBaseMutabilityOption) {
+            setMutabilityEnabled(((KieBaseMutabilityOption) option) == KieBaseMutabilityOption.ALLOWED);
         }
 
     }

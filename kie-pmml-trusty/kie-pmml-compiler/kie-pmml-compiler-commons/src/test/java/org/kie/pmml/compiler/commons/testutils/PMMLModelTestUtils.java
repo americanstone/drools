@@ -41,6 +41,8 @@ import org.dmg.pmml.ParameterField;
 import org.dmg.pmml.ResultFeature;
 import org.dmg.pmml.SimplePredicate;
 import org.dmg.pmml.SimpleSetPredicate;
+import org.dmg.pmml.Target;
+import org.dmg.pmml.TargetValue;
 import org.dmg.pmml.TransformationDictionary;
 import org.dmg.pmml.regression.CategoricalPredictor;
 import org.dmg.pmml.regression.NumericPredictor;
@@ -62,8 +64,9 @@ public class PMMLModelTestUtils {
 
     public static PMML getPMMLWithRandomTestModel() {
         PMML toReturn = new PMML();
-        toReturn.setDataDictionary(getRandomDataDictionary());
-        toReturn.addModels(getRandomTestModel());
+        DataDictionary dataDictionary = getRandomDataDictionary();
+        toReturn.setDataDictionary(dataDictionary);
+        toReturn.addModels(getRandomTestModel(dataDictionary));
         return toReturn;
     }
 
@@ -107,10 +110,37 @@ public class PMMLModelTestUtils {
 
     public static TestModel getRandomTestModel() {
         TestModel toReturn = new TestModel();
-
         toReturn.setModelName(RandomStringUtils.random(6, true, false));
         toReturn.setMiningSchema(getRandomMiningSchema());
         toReturn.setOutput(getRandomOutput());
+        return toReturn;
+    }
+
+    public static TestModel getRandomTestModel(DataDictionary dataDictionary) {
+        TestModel toReturn = new TestModel();
+        List<DataField> dataFields = dataDictionary.getDataFields();
+        MiningSchema miningSchema = new MiningSchema();
+        IntStream.range(0, dataFields.size() -1)
+                .forEach(i -> {
+                            DataField dataField = dataFields.get(i);
+                            MiningField miningField = new MiningField();
+                            miningField.setName(dataField.getName());
+                            miningField.setUsageType(MiningField.UsageType.ACTIVE);
+                            miningSchema.addMiningFields(miningField);
+                          });
+        DataField lastDataField = dataFields.get(dataFields.size()-1);
+        MiningField predictedMiningField = new MiningField();
+        predictedMiningField.setName(lastDataField.getName());
+        predictedMiningField.setUsageType(MiningField.UsageType.PREDICTED);
+        miningSchema.addMiningFields(predictedMiningField);
+        Output output = new Output();
+        OutputField outputField = new OutputField();
+        outputField.setName(FieldName.create("OUTPUT_" + lastDataField.getName().getValue()));
+        outputField.setDataType(lastDataField.getDataType());
+        outputField.setOpType(getRandomOpType());
+        toReturn.setModelName(RandomStringUtils.random(6, true, false));
+        toReturn.setMiningSchema(miningSchema);
+        toReturn.setOutput(output);
         return toReturn;
     }
 
@@ -140,7 +170,7 @@ public class PMMLModelTestUtils {
 
     public static CategoricalPredictor getCategoricalPredictor(String name, double value, double coefficient) {
         CategoricalPredictor toReturn = new CategoricalPredictor();
-        toReturn.setField(getFieldName(name));
+        toReturn.setField(FieldName.create(name));
         toReturn.setValue(value);
         toReturn.setCoefficient(coefficient);
         return toReturn;
@@ -148,7 +178,7 @@ public class PMMLModelTestUtils {
 
     public static NumericPredictor getNumericPredictor(String name, int exponent, double coefficient) {
         NumericPredictor toReturn = new NumericPredictor();
-        toReturn.setField(getFieldName(name));
+        toReturn.setField(FieldName.create(name));
         toReturn.setExponent(exponent);
         toReturn.setCoefficient(coefficient);
         return toReturn;
@@ -156,7 +186,7 @@ public class PMMLModelTestUtils {
 
     public static PredictorTerm getPredictorTerm(String name, double coefficient, List<String> fieldRefNames) {
         PredictorTerm toReturn = new PredictorTerm();
-        toReturn.setName(getFieldName(name));
+        toReturn.setName(FieldName.create(name));
         toReturn.setCoefficient(coefficient);
         toReturn.addFieldRefs(fieldRefNames.stream().map(PMMLModelTestUtils::getFieldRef).toArray(FieldRef[]::new));
         return toReturn;
@@ -164,52 +194,104 @@ public class PMMLModelTestUtils {
 
     public static DataField getDataField(String fieldName, OpType opType) {
         DataField toReturn = new DataField();
-        toReturn.setName(getFieldName(fieldName));
+        toReturn.setName(FieldName.create(fieldName));
         toReturn.setOpType(opType);
         return toReturn;
     }
 
+    public static DataField getDataField(String fieldName, OpType opType, DataType dataType) {
+        DataField toReturn = getDataField(fieldName, opType);
+        toReturn.setDataType(dataType);
+        return toReturn;
+    }
+
     public static MiningField getMiningField(String fieldName, MiningField.UsageType usageType) {
-        MiningField toReturn = new MiningField();
-        toReturn.setName(getFieldName(fieldName));
+        MiningField toReturn = new MiningField(FieldName.create(fieldName));
         toReturn.setUsageType(usageType);
         return toReturn;
     }
 
-    public static DataField getRandomDataField() {
-        Random random = new Random();
-        DataField toReturn = new DataField();
-        toReturn.setName(getFieldName(RandomStringUtils.random(6, true, false)));
-        List<DataType> dataTypes = getDataTypes();
-        toReturn.setDataType(dataTypes.get(random.nextInt(dataTypes.size())));
+    public static Target getTarget(String fieldTarget, OpType opType) {
+        Target toReturn = new Target();
+        toReturn.setField(FieldName.create(fieldTarget));
+        toReturn.setOpType(opType);
         return toReturn;
+    }
+
+    public static DataField getRandomDataField() {
+        DataField toReturn = new DataField();
+        toReturn.setName(FieldName.create(RandomStringUtils.random(6, true, false)));
+        toReturn.setDataType(getRandomDataType());
+        toReturn.setOpType(getRandomOpType());
+        return toReturn;
+    }
+
+    public static DataType getRandomDataType() {
+        List<DataType> dataTypes = getDataTypes();
+        return dataTypes.get(new Random().nextInt(dataTypes.size()));
+    }
+
+    public static OpType getRandomOpType() {
+        Random random = new Random();
+        return OpType.values()[random.nextInt(OpType.values().length)];
+    }
+
+    public static Target.CastInteger getRandomCastInteger() {
+        Random random = new Random();
+        return Target.CastInteger.values()[random.nextInt(Target.CastInteger.values().length)];
     }
 
     public static MiningField getRandomMiningField() {
         Random random = new Random();
-        MiningField toReturn = new MiningField();
-        toReturn.setName(getFieldName(RandomStringUtils.random(6, true, false)));
+        MiningField toReturn = new MiningField(FieldName.create(RandomStringUtils.random(6, true, false)));
         toReturn.setUsageType(MiningField.UsageType.values()[random.nextInt(MiningField.UsageType.values().length)]);
+        toReturn.setOpType(getRandomOpType());
         return toReturn;
     }
 
     public static OutputField getRandomOutputField() {
         Random random = new Random();
+        FieldName fieldName = FieldName.create(RandomStringUtils.random(6, true, false));
         OutputField toReturn = new OutputField();
-        toReturn.setName(getFieldName(RandomStringUtils.random(6, true, false)));
-        toReturn.setOpType(OpType.values()[random.nextInt(OpType.values().length)]);
+        toReturn.setName(fieldName);
+        toReturn.setOpType(getRandomOpType());
         List<DataType> dataTypes = getDataTypes();
         toReturn.setDataType(dataTypes.get(random.nextInt(dataTypes.size())));
-        toReturn.setTargetField(getFieldName(RandomStringUtils.random(6, true, false)));
+        fieldName = FieldName.create(RandomStringUtils.random(6, true, false));
+        toReturn.setTargetField(fieldName);
         List<ResultFeature> resultFeatures = getResultFeature();
         toReturn.setResultFeature(resultFeatures.get(random.nextInt(resultFeatures.size())));
         return toReturn;
     }
 
+    public static Target getRandomTarget() {
+        Random random = new Random();
+        Target toReturn = new Target();
+        toReturn.setField(FieldName.create(RandomStringUtils.random(6, true, false)));
+        toReturn.setOpType(getRandomOpType());
+        toReturn.setMax(random.nextInt(234));
+        toReturn.setMin(random.nextInt(23));
+        toReturn.setCastInteger(getRandomCastInteger());
+        toReturn.setRescaleConstant(random.nextInt(234));
+        toReturn.setRescaleFactor(random.nextInt(234));
+        IntStream.range(0, 3)
+                .forEach(i -> toReturn.addTargetValues(getRandomTargetValue()));
+        return toReturn;
+    }
+
+    public static TargetValue getRandomTargetValue() {
+        Random random = new Random();
+        TargetValue toReturn = new TargetValue();
+        toReturn.setValue(random.nextDouble());
+        toReturn.setDisplayValue(RandomStringUtils.random(6, true, false));
+        toReturn.setDefaultValue(random.nextFloat());
+        toReturn.setPriorProbability((double)random.nextInt(100)/13);
+        return toReturn;
+    }
+
     public static ParameterField getParameterField(String fieldName, DataType dataType) {
-        ParameterField toReturn = new ParameterField();
+        ParameterField toReturn = new ParameterField(FieldName.create(fieldName));
         toReturn.setDataType(dataType);
-        toReturn.setName(getFieldName(fieldName));
         return toReturn;
     }
 
@@ -280,12 +362,8 @@ public class PMMLModelTestUtils {
         return toReturn;
     }
 
-    public static FieldName getFieldName(final String fieldName) {
-        return FieldName.create(fieldName);
-    }
-
     public static FieldRef getFieldRef(final String fieldName) {
-        return new FieldRef(getFieldName(fieldName));
+        return new FieldRef(FieldName.create(fieldName));
     }
 
     public static Object getRandomValue(DataType dataType) {

@@ -17,8 +17,11 @@
 package org.drools.ancompiler;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.drools.core.base.ClassFieldReader;
 import org.drools.core.reteoo.AlphaNode;
@@ -30,15 +33,12 @@ import org.drools.core.reteoo.LeftInputAdapterNode;
 import org.drools.core.reteoo.NodeTypeEnums;
 import org.drools.core.reteoo.ObjectSink;
 import org.drools.core.reteoo.ObjectSinkNode;
-import org.drools.core.reteoo.ObjectSinkNodeList;
 import org.drools.core.reteoo.ObjectSinkPropagator;
 import org.drools.core.reteoo.ObjectTypeNode;
 import org.drools.core.reteoo.SingleObjectSinkAdapter;
 import org.drools.core.reteoo.WindowNode;
 import org.drools.core.rule.IndexableConstraint;
 import org.drools.core.spi.AlphaNodeFieldConstraint;
-import org.drools.core.util.Iterator;
-import org.drools.core.util.ObjectHashMap;
 import org.drools.core.util.index.AlphaRangeIndex;
 
 /**
@@ -60,7 +60,14 @@ public class ObjectTypeNodeParser {
      * OTN we are parsing/traversing
      */
     private final ObjectTypeNode objectTypeNode;
-    private IndexableConstraint indexableConstraint;
+    private LinkedHashSet<IndexableConstraint> indexableConstraints = new LinkedHashSet<>();
+
+    // When we have more than one indexable constraints we disable traversing of HashedAlphaNode
+    private boolean traverseHashedAlphaNodes = true;
+
+    public void setTraverseHashedAlphaNodes(boolean traverseHashedAlphaNodes) {
+        this.traverseHashedAlphaNodes = traverseHashedAlphaNodes;
+    }
 
     /**
      * Creates a new parser for the specified ObjectTypeNode
@@ -86,12 +93,11 @@ public class ObjectTypeNodeParser {
         ObjectSinkPropagator propagator = objectTypeNode.getObjectSinkPropagator();
 
         handler.startObjectTypeNode(objectTypeNode);
-        indexableConstraint = traversePropagator(propagator, handler);
+        traversePropagator(propagator, handler);
         handler.endObjectTypeNode(objectTypeNode);
     }
 
-    private IndexableConstraint traversePropagator(ObjectSinkPropagator propagator, NetworkHandler handler) {
-        IndexableConstraint foundIndexableConstraint = null;
+    private void traversePropagator(ObjectSinkPropagator propagator, NetworkHandler handler) {
         if (propagator instanceof SingleObjectSinkAdapter) {
             // we know there is only a single child sink for this propagator
             ObjectSink sink = propagator.getSinks()[0];
@@ -100,26 +106,29 @@ public class ObjectTypeNodeParser {
         } else if (propagator instanceof CompositeObjectSinkAdapter) {
             CompositeObjectSinkAdapter composite = (CompositeObjectSinkAdapter) propagator;
 
-            traverseSinkLisk(composite.getRangeIndexableSinks(), handler);
-            traverseSinkLisk(composite.getHashableSinks(), handler);
-            traverseSinkLisk(composite.getOthers(), handler);
-            traverseRangeIndexedAlphaNodes(composite.getRangeIndexMap(), handler);
-            foundIndexableConstraint = traverseHashedAlphaNodes(composite.getHashedSinkMap(), handler);
+            if(traverseHashedAlphaNodes) {
+                traverseSinkList(composite.getRangeIndexableSinks(), handler);
+                traverseSinkList(composite.getHashableSinks(), handler);
+                traverseSinkList(composite.getOthers(), handler);
+                traverseRangeIndexedAlphaNodes(composite.getRangeIndexMap(), handler);
+                traverseHashedAlphaNodes(composite.getHashedSinkMap(), handler);
+            } else {
+                traverseSinkList(composite.getSinks(), handler);
+            }
         } else if (propagator instanceof CompositePartitionAwareObjectSinkAdapter) {
             CompositePartitionAwareObjectSinkAdapter composite = (CompositePartitionAwareObjectSinkAdapter) propagator;
-            traverseSinkLisk(composite.getSinks(), handler);
+            traverseSinkList(composite.getSinks(), handler);
         }
-        return foundIndexableConstraint;
     }
-    private void traverseSinkLisk(ObjectSinkNodeList sinks, NetworkHandler handler) {
+    private void traverseSinkList(List<? extends ObjectSinkNode> sinks, NetworkHandler handler) {
         if (sinks != null) {
-            for (ObjectSinkNode sink = sinks.getFirst(); sink != null; sink = sink.getNextObjectSinkNode()) {
+            for (ObjectSinkNode sink : sinks) {
                 traverseSink(sink, handler);
             }
         }
     }
 
-    private void traverseSinkLisk(ObjectSink[] sinks, NetworkHandler handler) {
+    private void traverseSinkList(ObjectSink[] sinks, NetworkHandler handler) {
         if (sinks != null) {
             for (ObjectSink sink : sinks) {
                 traverseSink(sink, handler);
@@ -127,20 +136,19 @@ public class ObjectTypeNodeParser {
         }
     }
 
-    private IndexableConstraint traverseHashedAlphaNodes(ObjectHashMap hashedAlphaNodes, NetworkHandler handler) {
-        IndexableConstraint hashedFieldReader = null;
-        if (hashedAlphaNodes != null && hashedAlphaNodes.size() > 0) {
-            AlphaNode firstAlpha = getFirstAlphaNode(hashedAlphaNodes);
-            hashedFieldReader = getClassFieldReaderForHashedAlpha(firstAlpha);
+    private void traverseHashedAlphaNodes(Map<CompositeObjectSinkAdapter.HashKey, AlphaNode> hashedAlphaNodes, NetworkHandler handler) {
+        if (hashedAlphaNodes != null && !hashedAlphaNodes.isEmpty()) {
+            AlphaNode firstAlpha = hashedAlphaNodes.values().iterator().next();
+            IndexableConstraint hashedFieldReader = getClassFieldReaderForHashedAlpha(firstAlpha);
+            indexableConstraints.add(hashedFieldReader);
 
             // start the hashed alphas
             handler.startHashedAlphaNodes(hashedFieldReader);
 
-            Iterator<ObjectHashMap.ObjectEntry> iter = hashedAlphaNodes.iterator();
             AlphaNode optionalNullAlphaNodeCase = null;
-            for (ObjectHashMap.ObjectEntry entry = iter.next(); entry != null; entry = iter.next()) {
-                CompositeObjectSinkAdapter.HashKey hashKey = (CompositeObjectSinkAdapter.HashKey) entry.getKey();
-                AlphaNode alphaNode = (AlphaNode) entry.getValue();
+            for (Map.Entry<CompositeObjectSinkAdapter.HashKey, AlphaNode> entry : hashedAlphaNodes.entrySet()) {
+                CompositeObjectSinkAdapter.HashKey hashKey = entry.getKey();
+                AlphaNode alphaNode = entry.getValue();
 
                 final Object objectValue = hashKey.getObjectValue();
                 if (objectValue != null) {
@@ -162,7 +170,6 @@ public class ObjectTypeNodeParser {
                 handler.nullCaseAlphaNodeEnd(optionalNullAlphaNodeCase);
             }
         }
-        return hashedFieldReader;
     }
 
     private void traverseRangeIndexedAlphaNodes(Map<CompositeObjectSinkAdapter.FieldIndex, AlphaRangeIndex> rangeIndexMap, NetworkHandler handler) {
@@ -190,7 +197,7 @@ public class ObjectTypeNodeParser {
 
             handler.startNonHashedAlphaNode(alphaNode);
 
-            traversePropagator( alphaNode.getObjectSinkPropagator(), handler );
+            traversePropagator(alphaNode.getObjectSinkPropagator(), handler);
 
             handler.endNonHashedAlphaNode(alphaNode);
         } else if (NodeTypeEnums.isBetaNode( sink ) ) {
@@ -212,28 +219,6 @@ public class ObjectTypeNodeParser {
     }
 
     /**
-     * Returns the first {@link AlphaNode} from the specified {@link ObjectHashMap}.
-     *
-     * @param hashedAlphaNodes map of hashed AlphaNodes
-     * @return first alpha from the specified map
-     * @throws IllegalArgumentException thrown if the map doesn't contain any alpha nodes
-     */
-    private AlphaNode getFirstAlphaNode(final ObjectHashMap hashedAlphaNodes) throws IllegalArgumentException {
-        AlphaNode firstAlphaNode;
-
-        final Iterator iter = hashedAlphaNodes.iterator();
-        final ObjectHashMap.ObjectEntry entry = (ObjectHashMap.ObjectEntry) iter.next();
-
-        if (entry != null) {
-            firstAlphaNode = (AlphaNode) entry.getValue();
-        } else {
-            throw new IllegalArgumentException("ObjectHashMap does not contain any hashed AlphaNodes!");
-        }
-
-        return firstAlphaNode;
-    }
-
-    /**
      * Returns the {@link ClassFieldReader} for the hashed AlphaNode. The AlphaNode's constraint has to be a
      * MvelConstraint. This is the only type of hashed alpha currently supported.
      *
@@ -251,7 +236,15 @@ public class ObjectTypeNodeParser {
         return (IndexableConstraint) fieldConstraint;
     }
 
+    public Set<IndexableConstraint> getIndexableConstraints() {
+        return indexableConstraints;
+    }
+
     public IndexableConstraint getIndexableConstraint() {
-        return indexableConstraint;
+        IndexableConstraint[] constraintsArray = indexableConstraints
+                .toArray(new IndexableConstraint[0]);
+
+        return indexableConstraints.isEmpty() ? null :
+                constraintsArray[constraintsArray.length - 1];
     }
 }

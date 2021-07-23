@@ -15,22 +15,41 @@
  */
 package org.kie.pmml.api.models;
 
+import java.io.Serializable;
+import java.util.List;
+
+import org.kie.pmml.api.enums.DATA_TYPE;
 import org.kie.pmml.api.enums.FIELD_USAGE_TYPE;
 import org.kie.pmml.api.enums.OP_TYPE;
 
 /**
  * User-friendly representation of a <b>MiningField</b>
  */
-public class MiningField {
+public class MiningField implements Serializable {
 
+    private static final long serialVersionUID = -7718478772317847187L;
     private final String name;
     private final FIELD_USAGE_TYPE usageType;
     private final OP_TYPE opType;
+    private final DATA_TYPE dataType;
+    private final String missingValueReplacement;
+    private final List<String> allowedValues;
+    private final List<Interval> intervals;
 
-    public MiningField(String name, FIELD_USAGE_TYPE usageType, OP_TYPE opType) {
+    public MiningField(final String name,
+                       final FIELD_USAGE_TYPE usageType,
+                       final OP_TYPE opType,
+                       final DATA_TYPE dataType,
+                       final String missingValueReplacement,
+                       final List<String> allowedValues,
+                       final List<Interval> intervals) {
         this.name = name;
         this.usageType = usageType;
         this.opType = opType;
+        this.dataType = dataType;
+        this.missingValueReplacement = missingValueReplacement;
+        this.allowedValues = allowedValues;
+        this.intervals = intervals;
     }
 
     public String getName() {
@@ -43,5 +62,21 @@ public class MiningField {
 
     public OP_TYPE getOpType() {
         return opType;
+    }
+
+    public DATA_TYPE getDataType() {
+        return dataType;
+    }
+
+    public String getMissingValueReplacement() {
+        return missingValueReplacement;
+    }
+
+    public List<String> getAllowedValues() {
+        return allowedValues;
+    }
+
+    public List<Interval> getIntervals() {
+        return intervals;
     }
 }

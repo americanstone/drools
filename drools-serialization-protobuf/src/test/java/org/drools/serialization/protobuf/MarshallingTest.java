@@ -256,12 +256,12 @@ public class MarshallingTest extends CommonTestMethodBase {
         map = SerializationHelper.serializeObject( map );
         kBase = (InternalKnowledgeBase) map.get( "x" );
 
+        kBase.addPackages(kpkgs);
+
         KieSession session = kBase.newKieSession();
 
         // serialise the working memory before population
         session = getSerialisedStatefulKnowledgeSession(session, kBase, true);
-
-        kBase.addPackages(kpkgs);
 
         session.setGlobal( "list",
                            new ArrayList() );
@@ -314,9 +314,9 @@ public class MarshallingTest extends CommonTestMethodBase {
         Collection<KiePackage>  kpkgs = loadKnowledgePackages("test_Serializable.drl" );
 
         InternalKnowledgeBase kBase = (InternalKnowledgeBase) getKnowledgeBase();
-        KieSession session = kBase.newKieSession();
-
         kBase.addPackages(kpkgs);
+
+        KieSession session = kBase.newKieSession();
 
         session.setGlobal( "list",
                            new ArrayList() );
@@ -2256,7 +2256,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         KieBase kBase = loadKnowledgeBaseFromString(config, str);
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
         KieSession ksession = kBase.newKieSession( ksconf, null );
 
@@ -2281,7 +2281,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         BuildContext buildContext = new BuildContext( knowledgeBase );
         //simple rule that fires after 10 seconds
         final RuleImpl rule = new RuleImpl( "test-rule" );
-        new RuleTerminalNode( 1, new MockTupleSource( 2 ), rule, rule.getLhs(), 0, buildContext );
+        new RuleTerminalNode(1, new MockTupleSource(2, buildContext), rule, rule.getLhs(), 0, buildContext );
 
         final List<String> fired = new ArrayList<String>();
 
@@ -2395,7 +2395,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         KieBase kBase = loadKnowledgeBaseFromString(config, str);
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
         KieSession ksession = kBase.newKieSession( ksconf, null );
 
@@ -2481,7 +2481,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         KieBase kBase = loadKnowledgeBaseFromString(config, str);
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
         KieSession ksession = kBase.newKieSession( ksconf, null );
 
@@ -2534,7 +2534,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         final KieBase kbase = loadKnowledgeBaseFromString( conf, str );
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
         KieSession ksession = createKnowledgeSession(kbase, ksconf);
 
@@ -2609,7 +2609,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         final KieBase kbase = loadKnowledgeBaseFromString( conf, str );
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
         KieSession ksession = createKnowledgeSession(kbase, ksconf);
 
@@ -2691,7 +2691,7 @@ public class MarshallingTest extends CommonTestMethodBase {
 
         KieSessionConfiguration ksconf = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
         ksconf.setOption( TimerJobFactoryOption.get("trackable") );
-        ksconf.setOption( ClockTypeOption.get( "pseudo" ) );
+        ksconf.setOption( ClockTypeOption.PSEUDO );
 
         Environment env = EnvironmentFactory.newEnvironment();
         env.set( EnvironmentName.GLOBALS, globals );
@@ -2778,7 +2778,7 @@ public class MarshallingTest extends CommonTestMethodBase {
                                                EventProcessingOption.STREAM );
 
         KieSessionConfiguration sessionConfig = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        sessionConfig.setOption( ClockTypeOption.get( "pseudo" ) );
+        sessionConfig.setOption( ClockTypeOption.PSEUDO );
         KieSession ksession = kbase.newKieSession(sessionConfig, null);
 
         ksession.insert( "ATrigger" );
@@ -2910,7 +2910,7 @@ public class MarshallingTest extends CommonTestMethodBase {
         ksconf.setOption( ClockTypeOption.get( ClockType.PSEUDO_CLOCK.getId() ) );
         ksconf.setOption( TimedRuleExecutionOption.YES );
         ksconf.setOption(TimerJobFactoryOption.get("trackable"));
-        ksconf.setOption(ClockTypeOption.get("pseudo"));
+        ksconf.setOption(ClockTypeOption.PSEUDO);
 
         KieBase kbase1 = new KieHelper().addContent( drl, ResourceType.DRL )
                                         .build( EventProcessingOption.STREAM );

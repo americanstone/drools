@@ -74,6 +74,18 @@ public class ObjectTypeNodeCompiler {
 
         ObjectTypeNodeParser parser = new ObjectTypeNodeParser(objectTypeNode);
 
+        // debug rete
+        logger.debug("Compiling Alpha Network: ");
+        DebugHandler debugHandler = new DebugHandler();
+        parser.accept(debugHandler);
+
+        // After the first parsing we decide whether to traverse hashedAlphaNodes or not
+
+        if(parser.getIndexableConstraints().size() > 1) {
+            logger.warn("Alpha Network Compiler with multiple Indexable Constraints is not supported, reverting to non hashed-ANC. This might be slower ");
+            parser.setTraverseHashedAlphaNodes(false);
+        }
+
         // create declarations
         DeclarationsHandler declarations = new DeclarationsHandler(builder);
         parser.accept(declarations);
@@ -86,15 +98,20 @@ public class ObjectTypeNodeCompiler {
         createConstructor(hashedAlphaDeclarations, rangeIndexDeclarationMap);
 
         // create set node method
-        SetNodeReferenceHandler setNode = new SetNodeReferenceHandler(builder);
-        parser.accept(setNode);
+        NodeCollectorHandler nodeCollectors = new NodeCollectorHandler();
+        parser.accept(nodeCollectors);
+
+        SetNodeReferenceHandler partitionedSwitch = new SetNodeReferenceHandler(nodeCollectors.getNodes());
+        partitionedSwitch.emitCode(builder);
 
         // create assert method
-        AssertHandler assertHandler = new AssertHandler(builder, className, !hashedAlphaDeclarations.isEmpty());
+        AssertHandler assertHandler = new AssertHandler(className, !hashedAlphaDeclarations.isEmpty());
         parser.accept(assertHandler);
+        builder.append(assertHandler.emitCode());
 
-        ModifyHandler modifyHandler = new ModifyHandler(builder, className, !hashedAlphaDeclarations.isEmpty());
+        ModifyHandler modifyHandler = new ModifyHandler(className, !hashedAlphaDeclarations.isEmpty());
         parser.accept(modifyHandler);
+        builder.append(modifyHandler.emitCode());
 
         DelegateMethodsHandler delegateMethodsHandler = new DelegateMethodsHandler(builder);
         parser.accept(delegateMethodsHandler);
@@ -230,8 +247,13 @@ public class ObjectTypeNodeCompiler {
     public static List<ObjectTypeNode> objectTypeNodes(Rete rete) {
         return rete.getEntryPointNodes().values().stream()
                 .flatMap(ep -> ep.getObjectTypeNodes().values().stream())
-                .filter(f -> !InitialFact.class.isAssignableFrom(f.getObjectType().getClassType()))
+                .filter(ObjectTypeNodeCompiler::shouldCreateCompiledAlphaNetwork)
                 .collect(Collectors.toList());
+    }
+
+    private static boolean shouldCreateCompiledAlphaNetwork(ObjectTypeNode f) {
+        return !InitialFact.class.isAssignableFrom(f.getObjectType().getClassType())
+                && !(f.getObjectSinkPropagator() instanceof CompiledNetwork); // DROOLS-6336 Avoid generating an ANC from an ANC, it won't work anyway
     }
 
     public static Map<String, CompiledNetworkSource> compiledNetworkSourceMap(Rete rete) {

@@ -25,9 +25,9 @@ import java.util.stream.Collectors;
 import org.drools.compiler.builder.impl.KnowledgeBuilderImpl;
 import org.kie.api.io.Resource;
 import org.kie.api.io.ResourceWithConfiguration;
-import org.kie.pmml.commons.HasRule;
 import org.kie.pmml.api.exceptions.ExternalException;
 import org.kie.pmml.api.exceptions.KiePMMLException;
+import org.kie.pmml.commons.HasRule;
 import org.kie.pmml.commons.model.HasNestedModels;
 import org.kie.pmml.commons.model.HasSourcesMap;
 import org.kie.pmml.commons.model.KiePMMLModel;
@@ -35,6 +35,7 @@ import org.kie.pmml.compiler.executor.PMMLCompiler;
 import org.kie.pmml.compiler.executor.PMMLCompilerImpl;
 import org.kie.pmml.evaluator.assembler.factories.PMMLRuleMapperFactory;
 import org.kie.pmml.evaluator.assembler.factories.PMMLRuleMappersFactory;
+import org.kie.pmml.evaluator.assembler.implementations.HasKnowledgeBuilderImpl;
 
 import static org.kie.pmml.evaluator.assembler.factories.PMMLRuleMapperFactory.KIE_PMML_RULE_MAPPER_CLASS_NAME;
 import static org.kie.pmml.evaluator.assembler.factories.PMMLRuleMappersFactory.KIE_PMML_RULE_MAPPERS_CLASS_NAME;
@@ -90,10 +91,12 @@ public class PMMLCompilerService {
     public static List<KiePMMLModel> getKiePMMLModelsCompiledFromResource(KnowledgeBuilderImpl kbuilderImpl,
                                                                           Resource resource) {
         PMMLCompiler pmmlCompiler = kbuilderImpl.getCachedOrCreate(PMML_COMPILER_CACHE_KEY,
-                                                                   () -> getCompiler(kbuilderImpl));
+                                                                   PMMLCompilerService::getCompiler);
         try {
-            return pmmlCompiler.getKiePMMLModels(resource.getInputStream(), getFileName(resource.getSourcePath()),
-                                                 kbuilderImpl);
+            String packageName = getFactoryClassNamePackageName(resource)[1];
+            return pmmlCompiler.getKiePMMLModels(packageName, resource.getInputStream(),
+                                                 getFileName(resource.getSourcePath()),
+                                                 new HasKnowledgeBuilderImpl(kbuilderImpl));
         } catch (IOException e) {
             throw new ExternalException("ExternalException", e);
         }
@@ -107,7 +110,7 @@ public class PMMLCompilerService {
     public static List<KiePMMLModel> getKiePMMLModelsFromResourceWithSources(KnowledgeBuilderImpl kbuilderImpl,
                                                                              Resource resource) {
         PMMLCompiler pmmlCompiler = kbuilderImpl.getCachedOrCreate(PMML_COMPILER_CACHE_KEY,
-                                                                   () -> getCompiler(kbuilderImpl));
+                                                                   PMMLCompilerService::getCompiler);
         String[] classNamePackageName = getFactoryClassNamePackageName(resource);
         String factoryClassName = classNamePackageName[0];
         String packageName = classNamePackageName[1];
@@ -115,7 +118,7 @@ public class PMMLCompilerService {
             final List<KiePMMLModel> toReturn = pmmlCompiler.getKiePMMLModelsWithSources(factoryClassName, packageName,
                                                                                          resource.getInputStream(),
                                                                                          getFileName(resource.getSourcePath()),
-                                                                                         kbuilderImpl);
+                                                                                         new HasKnowledgeBuilderImpl(kbuilderImpl));
             populateWithPMMLRuleMappers(toReturn, resource);
             return toReturn;
         } catch (IOException e) {
@@ -172,7 +175,7 @@ public class PMMLCompilerService {
         ((HasSourcesMap) kiePMMLModel).addSourceMap(predictionRuleMapper, ruleMapperSource);
     }
 
-    static PMMLCompiler getCompiler(KnowledgeBuilderImpl kbuilderImpl) {
+    static PMMLCompiler getCompiler() {
         // to retrieve model implementations
         return new PMMLCompilerImpl();
     }

@@ -22,7 +22,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.eclipse.microprofile.openapi.OASFactory;
 import org.eclipse.microprofile.openapi.models.media.Schema;
@@ -31,10 +33,15 @@ import org.kie.dmn.api.core.DMNType;
 import org.kie.dmn.core.impl.BaseDMNTypeImpl;
 import org.kie.dmn.core.impl.CompositeTypeImpl;
 import org.kie.dmn.core.impl.SimpleTypeImpl;
+import org.kie.dmn.feel.lang.types.BuiltInType;
+import org.kie.dmn.feel.runtime.UnaryTest;
 import org.kie.dmn.openapi.NamingPolicy;
 import org.kie.dmn.openapi.model.DMNModelIOSets;
 import org.kie.dmn.openapi.model.DMNModelIOSets.DSIOSets;
 import org.kie.dmn.typesafe.DMNTypeUtils;
+
+import static org.kie.dmn.openapi.impl.DMNOASConstants.X_DMN_DESCRIPTIONS;
+import static org.kie.dmn.openapi.impl.DMNOASConstants.X_DMN_TYPE;
 
 public class DMNTypeSchemas {
 
@@ -68,7 +75,7 @@ public class DMNTypeSchemas {
         throw new UnsupportedOperationException();
     }
 
-    private boolean isIOSet(DMNType t) {
+    private boolean isIOSetForInputScope(DMNType t) {
         for (DMNModelIOSets ios : ioSets) {
             if (ios.getInputSet().equals(t)) {
                 return true;
@@ -80,6 +87,25 @@ public class DMNTypeSchemas {
             }
         }
         return false;
+    }
+
+    private Optional<Map<String, String>> ioSetDoc(DMNType t) {
+        Map<String, String> res = null;
+        for (DMNModelIOSets ios : ioSets) {
+            if (ios.getInputSet().equals(t)) {
+                res = ios.getInputDoc();
+            } else if (ios.getOutputSet().equals(t)) {
+                res = ios.getOutputDoc();
+            }
+            for (DSIOSets ds : ios.getDSIOSets()) {
+                if (ds.getDSInputSet().equals(t)) {
+                    res = ds.getInputDoc();
+                } else if (ds.getDSOutputSet().equals(t)) {
+                    res = ds.getOutputDoc();
+                }
+            }
+        }
+        return Optional.ofNullable(res);
     }
 
     private Schema schemaFromType(DMNType t) {
@@ -99,10 +125,16 @@ public class DMNTypeSchemas {
         }
         Schema schema = refOrBuiltinSchema(baseType);
         if (t.getAllowedValues() != null && !t.getAllowedValues().isEmpty()) {
-            FEELSchemaEnum.parseAllowedValuesIntoSchema(schema, t.getAllowedValues());
+            schema.addExtension(DMNOASConstants.X_DMN_ALLOWED_VALUES, t.getAllowedValuesFEEL().stream().map(UnaryTest::toString).collect(Collectors.joining(", ")));
+            if (DMNTypeUtils.getFEELBuiltInType(ancestor(t)) == BuiltInType.NUMBER) {
+                FEELSchemaEnum.parseNumberAllowedValuesIntoSchema(schema, t.getAllowedValues());
+            } else {
+                FEELSchemaEnum.parseAllowedValuesIntoSchema(schema, t.getAllowedValues());
+            }
         }
         schema = nestAsItemIfCollection(schema, t);
-        schema.addExtension(DMNOASConstants.X_DMN_TYPE, getDMNTypeSchemaXDMNTYPEdescr(t));
+        schema.addExtension(X_DMN_TYPE, getDMNTypeSchemaXDMNTYPEdescr(t));
+        processIoSetDoc(schema, t);
         return schema;
     }
 
@@ -112,17 +144,20 @@ public class DMNTypeSchemas {
             for (Entry<String, DMNType> fkv : ct.getFields().entrySet()) {
                 schema.addProperty(fkv.getKey(), refOrBuiltinSchema(fkv.getValue()));
             }
-            if (isIOSet(ct) && ct.getFields().size() > 0) {
+            if (isIOSetForInputScope(ct) && ct.getFields().size() > 0) {
                 schema.required(new ArrayList<>(ct.getFields().keySet()));
             }
-        } else if (ct.isCollection()) {
-            schema = refOrBuiltinSchema(ct.getBaseType());
         } else {
-            throw new IllegalStateException();
+            schema = refOrBuiltinSchema(ct.getBaseType());
         }
         schema = nestAsItemIfCollection(schema, ct);
-        schema.addExtension(DMNOASConstants.X_DMN_TYPE, getDMNTypeSchemaXDMNTYPEdescr(ct));
+        schema.addExtension(X_DMN_TYPE, getDMNTypeSchemaXDMNTYPEdescr(ct));
+        processIoSetDoc(schema, ct);
         return schema;
+    }
+
+    private void processIoSetDoc(final Schema schema, final DMNType type) {
+        ioSetDoc(type).ifPresent(x -> schema.addExtension(X_DMN_DESCRIPTIONS, x));
     }
 
     private Schema nestAsItemIfCollection(Schema original, DMNType t) {
@@ -131,6 +166,14 @@ public class DMNTypeSchemas {
         } else {
             return original;
         }
+    }
+    
+    private static DMNType ancestor(DMNType type) {
+    	 DMNType baseType = type.getBaseType();
+    	 while (baseType.getBaseType() != null) {
+    		 baseType = baseType.getBaseType();
+    	 }
+    	 return baseType;
     }
 
     private String getDMNTypeSchemaXDMNTYPEdescr(DMNType t) {

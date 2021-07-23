@@ -26,14 +26,11 @@ import org.drools.mvel.compiler.StockTick;
 import org.drools.mvel.compiler.StockTickInterface;
 import org.drools.testcoverage.common.util.KieBaseTestConfiguration;
 import org.drools.testcoverage.common.util.KieBaseUtil;
-import org.drools.testcoverage.common.util.KieUtil;
 import org.drools.testcoverage.common.util.TestParametersUtil;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.kie.api.KieBase;
-import org.kie.api.builder.KieModule;
-import org.kie.api.conf.EventProcessingOption;
 import org.kie.api.event.rule.AfterMatchFiredEvent;
 import org.kie.api.event.rule.AgendaEventListener;
 import org.kie.api.runtime.KieSession;
@@ -41,7 +38,7 @@ import org.kie.api.runtime.KieSessionConfiguration;
 import org.kie.api.runtime.conf.ClockTypeOption;
 import org.kie.api.time.SessionClock;
 
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -60,7 +57,7 @@ public class PseudoClockEventsTest {
 
     @Parameterized.Parameters(name = "KieBase type={0}")
     public static Collection<Object[]> getParameters() {
-        return TestParametersUtil.getKieBaseCloudConfigurations(true);
+        return TestParametersUtil.getKieBaseStreamConfigurations(true);
     }
 
     private static final String evalFirePseudoClockDeclaration =
@@ -134,11 +131,10 @@ public class PseudoClockEventsTest {
 
     private int processStocks(int stockCount, AgendaEventListener agendaEventListener, String drlContentString)
             throws Exception {
-        final KieModule kieModule = KieUtil.getKieModuleFromDrls("test", kieBaseTestConfiguration, drlContentString);
-        final KieBase kbase = KieBaseUtil.newKieBaseFromKieModuleWithAdditionalOptions(kieModule, kieBaseTestConfiguration, EventProcessingOption.STREAM);
+        KieBase kbase = KieBaseUtil.getKieBaseFromKieModuleFromDrl("test", kieBaseTestConfiguration, drlContentString);
 
         KieSessionConfiguration ksessionConfig = KnowledgeBaseFactory.newKnowledgeSessionConfiguration();
-        ksessionConfig.setOption(ClockTypeOption.get("pseudo"));
+        ksessionConfig.setOption(ClockTypeOption.PSEUDO);
         ksessionConfig.setProperty("keep.reference", "true");
         final KieSession ksession = kbase.newKieSession(ksessionConfig, null);
         ksession.addEventListener(agendaEventListener);

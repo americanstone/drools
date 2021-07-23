@@ -16,7 +16,6 @@
 
 package org.drools.model.functions;
 
-import java.util.UUID;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -32,6 +31,12 @@ public abstract class IntrospectableLambda implements Supplier<Object> {
 
     public abstract Object getLambda();
 
+    protected IntrospectableLambda() { }
+
+    protected IntrospectableLambda(String lambdaFingerprint) {
+        this.lambdaFingerprint = lambdaFingerprint;
+    }
+
     @Override
     public final Object get() {
         return getLambda();
@@ -39,7 +44,7 @@ public abstract class IntrospectableLambda implements Supplier<Object> {
 
     @Override
     public String toString() {
-        if(lambdaFingerprint == null) {
+        if (lambdaFingerprint == null) {
             lambdaFingerprint = generateFingerprint();
         }
 
@@ -55,8 +60,8 @@ public abstract class IntrospectableLambda implements Supplier<Object> {
             logger.debug("No HashedExpression provided, generating fingerprint using reflection via org.drools.mvel.asm.LambdaIntrospector, node sharing enabled");
             return LambdaPrinter.print(getLambda());
         } else {
-            logger.debug("No HashedExpression provided, using Object.class.toString(), node sharing might not work correctly");
-            return super.toString();
+            logger.warn("No HashedExpression provided with lambda, using System.identityHashCode as the lambda fingerprint, this will impact performances as node sharing won't work correctly");
+            return "HASHCODE-FINGEPRINT" + System.identityHashCode(this);
         }
     }
 

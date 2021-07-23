@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.drools.compiler.compiler.AnalysisResult;
@@ -34,7 +35,6 @@ import org.drools.compiler.compiler.DescrBuildError;
 import org.drools.compiler.compiler.Dialect;
 import org.drools.compiler.compiler.DialectConfiguration;
 import org.drools.compiler.kie.util.BeanCreator;
-import org.drools.mvel.builder.MVELBeanCreator;
 import org.drools.compiler.lang.descr.BaseDescr;
 import org.drools.compiler.lang.descr.BindingDescr;
 import org.drools.compiler.lang.descr.LiteralRestrictionDescr;
@@ -47,7 +47,6 @@ import org.drools.compiler.rule.builder.RuleBuildContext;
 import org.drools.core.base.ClassObjectType;
 import org.drools.core.base.DroolsQuery;
 import org.drools.core.base.EvaluatorWrapper;
-import org.drools.core.base.SimpleValueType;
 import org.drools.core.base.ValueType;
 import org.drools.core.base.evaluators.EvaluatorDefinition;
 import org.drools.core.base.evaluators.Operator;
@@ -69,6 +68,7 @@ import org.drools.core.time.TimerExpression;
 import org.drools.core.util.index.IndexUtil;
 import org.drools.mvel.asm.AsmUtil;
 import org.drools.mvel.builder.MVELAnalysisResult;
+import org.drools.mvel.builder.MVELBeanCreator;
 import org.drools.mvel.builder.MVELDialect;
 import org.drools.mvel.builder.MVELDialectConfiguration;
 import org.drools.mvel.expr.MVELCompilationUnit;
@@ -95,6 +95,7 @@ import static org.drools.compiler.rule.builder.util.PatternBuilderUtil.normalize
 import static org.drools.compiler.rule.builder.util.PatternBuilderUtil.normalizeStringOperator;
 import static org.drools.core.rule.constraint.EvaluatorHelper.WM_ARGUMENT;
 import static org.drools.core.util.ClassUtils.convertFromPrimitiveType;
+import static org.drools.core.util.StringUtils.extractFirstIdentifier;
 import static org.drools.mvel.asm.AsmUtil.copyErrorLocation;
 import static org.drools.mvel.builder.MVELExprAnalyzer.analyze;
 
@@ -274,7 +275,7 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
                                                            String rightValue,
                                                            boolean negated,
                                                            LiteralRestrictionDescr restrictionDescr) {
-        if (vtype.getSimpleType() == SimpleValueType.DATE) {
+        if (vtype.isDate()) {
             String normalized = leftValue + " " + operator + getNormalizeDate( vtype, field );
             if (!negated) {
                 return normalized;
@@ -286,6 +287,9 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
         }
         if (operator.equals("str")) {
             return normalizeStringOperator( leftValue, rightValue, restrictionDescr );
+        }
+        if (vtype.isDecimalNumber() && field.getValue() != null) {
+            expr = expr.replace( rightValue, field.getValue().toString() );
         }
         // resolve ambiguity between mvel's "empty" keyword and constraints like: List(empty == ...)
         return normalizeEmptyKeyword( expr, operator );
@@ -305,7 +309,7 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
         return expr;
     }
 
-    public Evaluator buildLiteralEvaluator( RuleBuildContext context,
+    private Evaluator buildLiteralEvaluator( RuleBuildContext context,
                                                    InternalReadAccessor extractor,
                                                    LiteralRestrictionDescr literalRestrictionDescr,
                                                    ValueType vtype) {
@@ -321,9 +325,9 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
                              right );
     }
 
-    public EvaluatorDefinition.Target getRightTarget( final InternalReadAccessor extractor ) {
-        return ( extractor.isSelfReference() && 
-                 !(Date.class.isAssignableFrom( extractor.getExtractToClass() ) || 
+    private EvaluatorDefinition.Target getRightTarget( final InternalReadAccessor extractor ) {
+        return ( extractor.isSelfReference() &&
+                 !(Date.class.isAssignableFrom( extractor.getExtractToClass() ) ||
                          Number.class.isAssignableFrom( extractor.getExtractToClass() ))) ? EvaluatorDefinition.Target.HANDLE : EvaluatorDefinition.Target.FACT;
     }
 
@@ -474,7 +478,29 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
             if (Number.class.isAssignableFrom(boxed1) && Number.class.isAssignableFrom(boxed2)) {
                 return true;
             }
+            if (areEqualityCompatibleEnums(boxed1, boxed2)) {
+                return true;
+            }
             return !Modifier.isFinal(c1.getModifiers()) && !Modifier.isFinal(c2.getModifiers());
+        }
+
+        protected boolean areEqualityCompatibleEnums(final Class<?> boxed1,
+                                                     final Class<?> boxed2) {
+            return boxed1.isEnum() && boxed2.isEnum() && boxed1.getName().equals(boxed2.getName())
+                    && equalEnumConstants(boxed1.getEnumConstants(), boxed2.getEnumConstants());
+        }
+
+        private boolean equalEnumConstants(final Object[] aa,
+                                           final Object[] bb) {
+            if (aa.length != bb.length) {
+                return false;
+            }
+            for (int i = 0; i < aa.length; i++) {
+                if (!Objects.equals(aa[i].getClass().getName(), bb[i].getClass().getName())) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         @Override
@@ -538,42 +564,6 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
         } finally {
             context.setTypesafe( typesafe );
         }
-    }
-
-    @Override
-    public TimerExpression buildTimerExpression( String expression, ClassLoader classLoader, Map<String, Declaration> decls ) {
-        if (expression == null) {
-            return null;
-        }
-
-        ParserConfiguration conf = new ParserConfiguration();
-        conf.setClassLoader( classLoader );
-
-        MVELAnalysisResult analysis = analyzeExpression( expression, conf, new BoundIdentifiers( DeclarationScopeResolver.getDeclarationClasses( decls ), null ) );
-
-        final BoundIdentifiers usedIdentifiers = analysis.getBoundIdentifiers();
-        int i = usedIdentifiers.getDeclrClasses().keySet().size();
-        Declaration[] previousDeclarations = new Declaration[i];
-        i = 0;
-        for ( String id :  usedIdentifiers.getDeclrClasses().keySet() ) {
-            previousDeclarations[i++] = decls.get( id );
-        }
-        Arrays.sort(previousDeclarations, RuleTerminalNode.SortDeclarations.instance);
-
-        MVELCompilationUnit unit = MVELDialect.getMVELCompilationUnit( expression,
-                analysis,
-                previousDeclarations,
-                null,
-                null,
-                null,
-                "drools",
-                KnowledgeHelper.class,
-                false,
-                MVELCompilationUnit.Scope.EXPRESSION );
-
-        MVELObjectExpression expr = new MVELObjectExpression( unit, "mvel" );
-        expr.compile( conf );
-        return expr;
     }
 
     @Override
@@ -703,6 +693,10 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
             }
 
             final BoundIdentifiers usedIdentifiers = analysis.getBoundIdentifiers();
+            if (!usedIdentifiers.getGlobals().isEmpty()) {
+                // cannot create a read accessors here when using globals
+                return null;
+            }
 
             if (!usedIdentifiers.getDeclrClasses().isEmpty()) {
                 if (reportError && descr instanceof BindingDescr ) {
@@ -722,12 +716,6 @@ public class MVELConstraintBuilder implements ConstraintBuilder {
             (( MVELCompileable ) reader).compile(data, context.getRule());
             data.addCompileable((MVELCompileable) reader);
         } catch (final Exception e) {
-            int dotPos = fieldName.indexOf('.');
-            String varName = dotPos > 0 ? fieldName.substring(0, dotPos).trim() : fieldName;
-            if (context.getKnowledgeBuilder().getGlobals().containsKey(varName)) {
-                return null;
-            }
-
             if (reportError) {
                 AsmUtil.copyErrorLocation(e, descr);
                 registerDescrBuildError(context, descr, e,

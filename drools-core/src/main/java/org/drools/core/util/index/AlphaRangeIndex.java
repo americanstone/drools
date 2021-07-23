@@ -23,7 +23,6 @@ import java.io.ObjectOutput;
 import java.util.Collection;
 import java.util.Collections;
 
-import org.drools.core.base.SimpleValueType;
 import org.drools.core.base.ValueType;
 import org.drools.core.reteoo.AlphaNode;
 import org.drools.core.reteoo.CompositeObjectSinkAdapter;
@@ -72,7 +71,11 @@ public class AlphaRangeIndex implements Externalizable {
         IndexableConstraint constraint = (IndexableConstraint) alphaNode.getConstraint();
         Comparable key = extractKey(constraint);
         IndexType indexType = extractIndexType(constraint);
-        rangeIndex.addIndex(indexType, key, alphaNode);
+        AlphaNode previous = rangeIndex.addIndex(indexType, key, alphaNode);
+        if (previous != null) {
+            throw new IllegalStateException("Index conflict with " + alphaNode + " and " + previous + ". Please report this to Drools team." +
+                    " You can workaround this issue by setting system property 'drools.alphaNodeRangeIndexThreshold' to '0'");
+        }
         size++;
     }
 
@@ -105,7 +108,7 @@ public class AlphaRangeIndex implements Externalizable {
             return field.getBooleanValue();
         } else if (valueType == ValueType.STRING_TYPE) {
             return (Comparable) field.getValue();
-        } else if (valueType.getSimpleType() == SimpleValueType.DATE) {
+        } else if (valueType.isDate()) {
             return (Comparable) field.getValue();
         } else if (valueType == ValueType.ARRAY_TYPE) {
             return (Comparable) field.getValue();

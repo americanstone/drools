@@ -190,6 +190,10 @@ public class KnowledgeBaseImpl
 
     private KieSessionsPool sessionPool;
 
+    private boolean mutable = true;
+
+    private boolean hasMultipleAgendaGroups = false;
+
     public KnowledgeBaseImpl() { }
 
     public KnowledgeBaseImpl(final String id,
@@ -219,6 +223,8 @@ public class KnowledgeBaseImpl
         if (this.config.getSessionPoolSize() > 0) {
             sessionPool = newKieSessionsPool( this.config.getSessionPoolSize() );
         }
+
+        mutable = this.config.isMutabilityEnabled();
     }
 
     @Override
@@ -434,8 +440,7 @@ public class KnowledgeBaseImpl
             droolsStream = new DroolsObjectInputStream(bytes);
         }
 
-        // boolean classLoaderCacheEnabled field
-        droolsStream.readBoolean();
+        this.hasMultipleAgendaGroups = droolsStream.readBoolean();
         Map<String, byte[]> store = (Map<String, byte[]>) droolsStream.readObject();
 
         this.rootClassLoader = createProjectClassLoader(droolsStream.getParentClassLoader(), store);
@@ -551,8 +556,7 @@ public class KnowledgeBaseImpl
             droolsStream = new DroolsObjectOutputStream(bytes);
         }
         try {
-            // must write this option first in order to properly deserialize later
-            droolsStream.writeBoolean(this.config.isClassLoaderCacheEnabled());
+            droolsStream.writeBoolean(this.hasMultipleAgendaGroups);
 
             droolsStream.writeObject((( ProjectClassLoader ) rootClassLoader).getStore());
 
@@ -1000,6 +1004,10 @@ public class KnowledgeBaseImpl
         return false;
     }
 
+    public boolean hasMultipleAgendaGroups() {
+        return hasMultipleAgendaGroups;
+    }
+
     private void disableMultithreadEvaluation(String warningMessage) {
         config.enforceSingleThreadEvaluation();
         logger.warn( warningMessage );
@@ -1093,7 +1101,7 @@ public class KnowledgeBaseImpl
             // if we are running in STREAM mode, update expiration offset
             for( EntryPointNode ep : this.rete.getEntryPointNodes().values() ) {
                 for( ObjectTypeNode node : ep.getObjectTypeNodes().values() ) {
-                    if( node.isAssignableFrom( typeDeclaration.getObjectType() ) ) {
+                    if( node.getObjectType().equals( typeDeclaration.getObjectType() ) ) {
                         node.setExpirationOffset( Math.max( node.getExpirationOffset(), exp ) );
                     }
                 }
@@ -1518,6 +1526,7 @@ public class KnowledgeBaseImpl
     }
 
     private void internalAddRule( RuleImpl rule ) {
+        this.hasMultipleAgendaGroups |= !rule.isMainAgendaGroup();
         this.eventSupport.fireBeforeRuleAdded( rule );
         this.reteooBuilder.addRule(rule);
         this.eventSupport.fireAfterRuleAdded( rule );
@@ -1663,10 +1672,16 @@ public class KnowledgeBaseImpl
     }
 
     public void executeQueuedActions() {
-        DialectRuntimeRegistry registry;
-        while (( registry = reloadPackageCompilationData.poll() ) != null) {
-            registry.onBeforeExecute();
+        if (mutable) {
+            DialectRuntimeRegistry registry;
+            while ((registry = reloadPackageCompilationData.poll()) != null) {
+                registry.onBeforeExecute();
+            }
         }
+    }
+
+    private void addReloadDialectDatas( DialectRuntimeRegistry registry ) {
+        this.reloadPackageCompilationData.offer( registry );
     }
 
     public RuleBasePartitionId createNewPartitionId() {
@@ -1687,10 +1702,6 @@ public class KnowledgeBaseImpl
         } finally {
             readUnlock();
         }
-    }
-
-    private void addReloadDialectDatas( DialectRuntimeRegistry registry ) {
-        this.reloadPackageCompilationData.offer( registry );
     }
 
     public ClassFieldAccessorCache getClassFieldAccessorCache() {

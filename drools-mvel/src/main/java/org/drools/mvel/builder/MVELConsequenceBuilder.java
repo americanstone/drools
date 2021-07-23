@@ -40,8 +40,11 @@ import org.drools.mvel.expr.MVELConsequence;
 import org.mvel2.Macro;
 import org.mvel2.MacroProcessor;
 
+import static org.drools.core.reteoo.PropertySpecificUtil.allSetButTraitBitMask;
 import static org.drools.core.reteoo.PropertySpecificUtil.getEmptyPropertyReactiveMask;
 import static org.drools.core.reteoo.PropertySpecificUtil.setPropertyOnMask;
+import static org.drools.core.util.StringUtils.codeAwareSplitOnChar;
+import static org.drools.core.util.StringUtils.findEndOfBlockIndex;
 import static org.drools.core.util.StringUtils.findEndOfMethodArgsIndex;
 import static org.drools.core.util.StringUtils.splitStatements;
 import static org.drools.mvel.asm.AsmUtil.copyErrorLocation;
@@ -140,6 +143,7 @@ public class MVELConsequenceBuilder
                     (String) ruleDescr.getNamedConsequences().get( consequenceName );
 
             text = processMacros( text );
+            text = rewriteModify( text );
 
             Map<String, Declaration> decls = context.getDeclarationResolver().getDeclarations(context.getRule());
             
@@ -209,6 +213,29 @@ public class MVELConsequenceBuilder
         }
     }
 
+    private static String rewriteModify( String text ) {
+        int modifyPos = text.indexOf( "@Modify with" );
+        if (modifyPos < 0) {
+            return text;
+        }
+
+        int modifyArgStart = text.indexOf( '(', modifyPos );
+        int modifyArgEnd = text.indexOf( ')', modifyPos );
+        String modified = text.substring( modifyArgStart+1, modifyArgEnd ).trim();
+
+        int modifyBlockStart = text.indexOf( '{', modifyArgEnd );
+        int modifyBlockEnd = findEndOfBlockIndex(text, modifyBlockStart);
+        String modifyBlock = text.substring( modifyBlockStart+1, modifyBlockEnd ).trim();
+
+        StringBuilder sb = new StringBuilder();
+        for (String statement : codeAwareSplitOnChar(modifyBlock, true, ';', ',', '\n')) {
+            sb.append( modified ).append( "." ).append( statement.trim() ).append( ";\n" );
+        }
+        sb.append( "drools.update(" ).append( modified ).append( ");\n" );
+
+        return rewriteModify( text.substring( 0, modifyPos ) + sb + text.substring( modifyBlockEnd+1 ) );
+    }
+
     private static String rewriteUpdates( RuleBuildContext context, AnalysisResult analysis, String text ) {
         return rewriteUpdates( analysis.getBoundIdentifiers()::resolveType,
                 c -> {
@@ -264,6 +291,10 @@ public class MVELConsequenceBuilder
                     int index = settableProperties.indexOf(propertyName);
                     if (index >= 0) {
                         modificationMask = setPropertyOnMask(modificationMask, index);
+                    } else {
+                        // I'm property reactive, but I was unable to infer which properties was modified, setting all bit in bitmask
+                        modificationMask = allSetButTraitBitMask();
+                        break;
                     }
                 }
             }

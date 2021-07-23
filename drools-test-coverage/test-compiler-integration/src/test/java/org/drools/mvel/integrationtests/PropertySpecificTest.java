@@ -61,7 +61,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(Parameterized.class)
@@ -75,7 +75,7 @@ public class PropertySpecificTest {
 
     @Parameterized.Parameters(name = "KieBase type={0}")
     public static Collection<Object[]> getParameters() {
-        // TODO: EM caused infinite loop with some tests e.g. testNodeSharing. Need to clarify and file JIRAs
+        // TODO: EM caused infinite loop with some tests e.g. testNoConstraint, testFrom, testNodeSharing. Need to clarify and file JIRAs
         return TestParametersUtil.getKieBaseCloudConfigurations(false);
     }
 
@@ -2704,7 +2704,7 @@ public class PropertySpecificTest {
                 "import " + BigDecimalFact.class.getCanonicalName() + "\n" +
                 "rule R when\n" +
                 "        accumulate( BigDecimalFact( $bdVal: bdVal), $minVal : min($bdVal))\n" +
-                "        accumulate( BigDecimalFact( $bdVal2: bdVal, $bdVal2 > $minVal), $minVal2 : min($bdVal2))\n" +
+                "        accumulate( BigDecimalFact( $bdVal2: bdVal, $bdVal2 > $minVal), $minVal2 : min($bdVal2); $minVal2 != null)\n" + // guard for DROOLS-6064
                 "\n" +
                 "        \n" +
                 "        $minFact: BigDecimalFact( bdVal == new BigDecimal($minVal.intValue()))\n" +

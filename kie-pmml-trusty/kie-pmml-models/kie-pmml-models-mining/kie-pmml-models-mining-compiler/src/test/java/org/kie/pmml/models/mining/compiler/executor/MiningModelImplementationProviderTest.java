@@ -16,6 +16,7 @@
 package org.kie.pmml.models.mining.compiler.executor;
 
 import java.io.FileInputStream;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,11 +25,15 @@ import org.dmg.pmml.PMML;
 import org.dmg.pmml.mining.MiningModel;
 import org.dmg.pmml.mining.Segment;
 import org.drools.compiler.builder.impl.KnowledgeBuilderImpl;
+import org.drools.core.util.ClassUtils;
 import org.junit.Test;
 import org.kie.memorycompiler.KieMemoryCompiler;
-import org.kie.pmml.commons.model.HasSourcesMap;
 import org.kie.pmml.api.enums.PMML_MODEL;
+import org.kie.pmml.commons.model.HasSourcesMap;
+import org.kie.pmml.commons.model.abstracts.AbstractKiePMMLComponent;
+import org.kie.pmml.compiler.commons.mocks.ExternalizableMock;
 import org.kie.pmml.compiler.commons.utils.KiePMMLUtil;
+import org.kie.pmml.models.mining.compiler.HasKnowledgeBuilderMock;
 import org.kie.pmml.models.mining.model.KiePMMLMiningModel;
 import org.kie.pmml.models.mining.model.KiePMMLMiningModelWithSources;
 import org.kie.test.util.filesystem.FileUtils;
@@ -48,6 +53,7 @@ public class MiningModelImplementationProviderTest {
     private static final String SOURCE_MIXED = "MiningModel_Mixed.pmml";
     private static final String SOURCE_NO_SEGMENT_ID = "MiningModel_NoSegmentId.pmml";
     private static final String SOURCE_SEGMENT_ID = "MiningModel_SegmentId.pmml";
+    private static final String PACKAGE_NAME = "PACKAGE_NAME";
 
     @Test
     public void getPMMLModelType() {
@@ -100,7 +106,7 @@ public class MiningModelImplementationProviderTest {
         commonVerifySegmentId(SOURCE_SEGMENT_ID);
     }
 
-    private void commonVerifySegmentId(final String source) throws Exception{
+    private void commonVerifySegmentId(final String source) throws Exception {
         final PMML pmml = getPMML(source);
         final MiningModel miningModel = (MiningModel) pmml.getModels().get(0);
         commonVerifySegmentId(miningModel.getSegmentation().getSegments());
@@ -118,11 +124,14 @@ public class MiningModelImplementationProviderTest {
     private void commonGetKiePMMLModel(String source) throws Exception {
         final PMML pmml = getPMML(source);
         final KnowledgeBuilderImpl knowledgeBuilder = new KnowledgeBuilderImpl();
-        final KiePMMLMiningModel retrieved = PROVIDER.getKiePMMLModel(pmml.getDataDictionary(),
-                                                                         pmml.getTransformationDictionary(),
-                                                                         (MiningModel) pmml.getModels().get(0),
-                                                                         knowledgeBuilder);
+        final KiePMMLMiningModel retrieved = PROVIDER.getKiePMMLModel(PACKAGE_NAME,
+                                                                      pmml.getDataDictionary(),
+                                                                      pmml.getTransformationDictionary(),
+                                                                      (MiningModel) pmml.getModels().get(0),
+                                                                      new HasKnowledgeBuilderMock(knowledgeBuilder));
         assertNotNull(retrieved);
+        assertTrue(retrieved instanceof Serializable);
+        commonVerifyIsDeepCloneable(retrieved);
     }
 
     private void commonGetKiePMMLModelWithSources(String source) throws Exception {
@@ -132,12 +141,14 @@ public class MiningModelImplementationProviderTest {
                                                                                  pmml.getDataDictionary(),
                                                                                  pmml.getTransformationDictionary(),
                                                                                  (MiningModel) pmml.getModels().get(0),
-                                                                                 knowledgeBuilder);
+                                                                                 new HasKnowledgeBuilderMock(knowledgeBuilder));
         assertNotNull(retrieved);
+        commonVerifyIsDeepCloneable(retrieved);
         assertNotNull(retrieved.getNestedModels());
         assertFalse(retrieved.getNestedModels().isEmpty());
         assertTrue(retrieved instanceof KiePMMLMiningModelWithSources);
-        final Map<String, String> sourcesMap = new HashMap<>(((KiePMMLMiningModelWithSources)retrieved).getSourcesMap());
+        final Map<String, String> sourcesMap =
+                new HashMap<>(((KiePMMLMiningModelWithSources) retrieved).getSourcesMap());
         assertFalse(sourcesMap.isEmpty());
         try {
             KieMemoryCompiler.compile(sourcesMap, Thread.currentThread().getContextClassLoader());
@@ -145,7 +156,7 @@ public class MiningModelImplementationProviderTest {
         } catch (Exception e) {
             // Expected
         }
-        retrieved.getNestedModels().forEach(nestedModel -> sourcesMap.putAll(((HasSourcesMap)nestedModel).getSourcesMap()));
+        retrieved.getNestedModels().forEach(nestedModel -> sourcesMap.putAll(((HasSourcesMap) nestedModel).getSourcesMap()));
         try {
             KieMemoryCompiler.compile(sourcesMap, Thread.currentThread().getContextClassLoader());
         } catch (Exception e) {
@@ -160,5 +171,12 @@ public class MiningModelImplementationProviderTest {
         assertEquals(1, toReturn.getModels().size());
         assertTrue(toReturn.getModels().get(0) instanceof MiningModel);
         return toReturn;
+    }
+
+    private void commonVerifyIsDeepCloneable(AbstractKiePMMLComponent toVerify) {
+        assertTrue(toVerify instanceof Serializable);
+        ExternalizableMock externalizableMock = new ExternalizableMock();
+        externalizableMock.setKiePMMLComponent(toVerify);
+        ClassUtils.deepClone(externalizableMock);
     }
 }

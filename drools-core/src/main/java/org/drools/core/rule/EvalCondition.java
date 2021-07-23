@@ -45,6 +45,8 @@ public class EvalCondition extends ConditionalElement
 
     private List<EvalCondition>        cloned             = Collections.<EvalCondition> emptyList();
 
+    private Map<String, Declaration> outerDeclarations = Collections.EMPTY_MAP;
+
     public EvalCondition() {
         this( null );
     }
@@ -161,7 +163,7 @@ public class EvalCondition extends ConditionalElement
         }
 
         for ( int i = 0, length = this.requiredDeclarations.length; i < length; i++ ) {
-            if ( this.requiredDeclarations[i].getOffset() != other.requiredDeclarations[i].getOffset() ) {
+            if (this.requiredDeclarations[i].getTupleIndex() != other.requiredDeclarations[i].getTupleIndex() ) {
                 return false;
             }
 
@@ -178,9 +180,12 @@ public class EvalCondition extends ConditionalElement
     }
 
     public Map<String, Declaration> getOuterDeclarations() {
-        return Collections.EMPTY_MAP;
+        return outerDeclarations;
     }
-    
+
+    public void setOuterDeclarations( Map<String, Declaration> outerDeclarations ) {
+        this.outerDeclarations = outerDeclarations;
+    }
 
     public List<? extends RuleConditionElement> getNestedElements() {
         return Collections.EMPTY_LIST;

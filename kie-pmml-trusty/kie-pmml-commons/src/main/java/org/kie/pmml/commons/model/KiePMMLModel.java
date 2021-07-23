@@ -20,31 +20,36 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.kie.pmml.api.enums.MINING_FUNCTION;
+import org.kie.pmml.api.enums.PMML_MODEL;
 import org.kie.pmml.api.models.MiningField;
 import org.kie.pmml.api.models.OutputField;
 import org.kie.pmml.api.models.PMMLModel;
 import org.kie.pmml.commons.model.abstracts.AbstractKiePMMLComponent;
-import org.kie.pmml.api.enums.MINING_FUNCTION;
-import org.kie.pmml.api.enums.PMML_MODEL;
-import org.kie.pmml.commons.model.tuples.KiePMMLNameValue;
+import org.kie.pmml.commons.transformations.KiePMMLLocalTransformations;
+import org.kie.pmml.commons.transformations.KiePMMLTransformationDictionary;
 
 /**
  * KIE representation of PMML model
  */
 public abstract class KiePMMLModel extends AbstractKiePMMLComponent implements PMMLModel {
 
+    private static final long serialVersionUID = 759750766311061701L;
+
     protected PMML_MODEL pmmlMODEL;
     protected MINING_FUNCTION miningFunction;
     protected String targetField;
     protected Map<String, Object> outputFieldsMap = new HashMap<>();
     protected Map<String, Object> missingValueReplacementMap = new HashMap<>();
-    protected Map<String, Function<List<KiePMMLNameValue>, Object>> commonTransformationsMap = new HashMap<>();
-    protected Map<String, Function<List<KiePMMLNameValue>, Object>> localTransformationsMap = new HashMap<>();
     protected List<MiningField> miningFields = new ArrayList<>();
     protected List<OutputField> outputFields = new ArrayList<>();
+    protected List<KiePMMLOutputField> kiePMMLOutputFields = new ArrayList<>();
+    protected List<KiePMMLTarget> kiePMMLTargets = new ArrayList<>();
+    protected KiePMMLTransformationDictionary transformationDictionary;
+    protected KiePMMLLocalTransformations localTransformations;
+
 
     protected KiePMMLModel(String name, List<KiePMMLExtension> extensions) {
         super(name, extensions);
@@ -70,14 +75,6 @@ public abstract class KiePMMLModel extends AbstractKiePMMLComponent implements P
         return Collections.unmodifiableMap(missingValueReplacementMap);
     }
 
-    public Map<String, Function<List<KiePMMLNameValue>, Object>> getCommonTransformationsMap() {
-        return Collections.unmodifiableMap(commonTransformationsMap);
-    }
-
-    public Map<String, Function<List<KiePMMLNameValue>, Object>> getLocalTransformationsMap() {
-        return Collections.unmodifiableMap(localTransformationsMap);
-    }
-
     /**
      * Method to retrieve the <b>package</b> name to be used inside kiebase/package attribute of
      * kmodule.xml and to use for package creation inside PMMLAssemblerService
@@ -86,7 +83,7 @@ public abstract class KiePMMLModel extends AbstractKiePMMLComponent implements P
      * @return
      */
     public String getKModulePackageName() {
-        String className  = this.getClass().getCanonicalName();
+        String className = this.getClass().getCanonicalName();
         return className.substring(0, className.lastIndexOf('.'));
     }
 
@@ -108,16 +105,34 @@ public abstract class KiePMMLModel extends AbstractKiePMMLComponent implements P
         this.outputFields = Collections.unmodifiableList(outputFields);
     }
 
+    public List<KiePMMLTarget> getKiePMMLTargets() {
+        return kiePMMLTargets;
+    }
+
+    public void setKiePMMLTargets(List<KiePMMLTarget> kiePMMLTargets) {
+        this.kiePMMLTargets = Collections.unmodifiableList(kiePMMLTargets);
+    }
+
+    public List<KiePMMLOutputField> getKiePMMLOutputFields() {
+        return kiePMMLOutputFields != null  ? Collections.unmodifiableList(kiePMMLOutputFields) : Collections.emptyList();
+    }
+
+    public KiePMMLTransformationDictionary getTransformationDictionary() {
+        return transformationDictionary;
+    }
+
+    public KiePMMLLocalTransformations getLocalTransformations() {
+        return localTransformations;
+    }
+
     /**
-     * @param knowledgeBase the knowledgeBase we are working on. Add as <code>Object</code> to avoid direct dependency. It is needed only by <b>Drools-dependent</b>
+     * @param knowledgeBase the knowledgeBase we are working on. Add as <code>Object</code> to avoid direct
+     * dependency. It is needed only by <b>Drools-dependent</b>
      * models, so it may be <b>ignored</b> by others
      * @param requestData
      * @return
      */
     public abstract Object evaluate(final Object knowledgeBase, final Map<String, Object> requestData);
-
-
-
 
     public abstract static class Builder<T extends KiePMMLModel> extends AbstractKiePMMLComponent.Builder<T> {
 

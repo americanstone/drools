@@ -28,14 +28,19 @@ import org.drools.core.definitions.InternalKnowledgePackage;
 import org.drools.core.impl.InternalKnowledgeBase;
 import org.drools.core.impl.KnowledgeBaseFactory;
 import org.drools.core.impl.StatefulKnowledgeSessionImpl;
+import org.drools.core.reteoo.AccumulateNode;
+import org.drools.core.reteoo.FromNodeLeftTuple;
 import org.drools.core.reteoo.InitialFactImpl;
+import org.drools.core.reteoo.LeftTuple;
 import org.drools.core.reteoo.LeftTupleImpl;
+import org.drools.core.reteoo.MockLeftTupleSink;
+import org.drools.core.reteoo.MockTupleSource;
+import org.drools.core.reteoo.builder.BuildContext;
 import org.drools.core.rule.Accumulate;
 import org.drools.mvel.MVELDialectRuntimeData;
 import org.drools.mvel.builder.MVELAccumulateBuilder;
 import org.drools.mvel.builder.MVELDialect;
 import org.drools.mvel.compiler.Cheese;
-import org.drools.mvel.compiler.reteoo.MockLeftTupleSink;
 import org.drools.mvel.expr.MVELCompileable;
 import org.junit.Test;
 
@@ -79,7 +84,12 @@ public class MVELAccumulateBuilderTest {
         InternalKnowledgeBase kBase = KnowledgeBaseFactory.newKnowledgeBase();
         StatefulKnowledgeSessionImpl ksession = (StatefulKnowledgeSessionImpl)kBase.newKieSession();
 
-        MockLeftTupleSink sink = new MockLeftTupleSink();
+        BuildContext buildContext = new BuildContext(kBase);
+        MockLeftTupleSink sink = new MockLeftTupleSink(buildContext);
+        MockTupleSource source = new MockTupleSource(1, buildContext);
+        source.setObjectCount(1);
+        sink.setLeftTupleSource(source);
+
         final Cheese cheddar1 = new Cheese( "cheddar",
                                             10 );
         final Cheese cheddar2 = new Cheese( "cheddar",
@@ -88,21 +98,22 @@ public class MVELAccumulateBuilderTest {
         final InternalFactHandle f1 = (InternalFactHandle) ksession.insert( cheddar1 );
         final InternalFactHandle f2 = (InternalFactHandle) ksession.insert( cheddar2 );
         final LeftTupleImpl tuple = new LeftTupleImpl( f0,
-                                               sink,
-                                               true );
+                                                       sink,
+                                                       true );
+
 
         Object wmContext = acc.createWorkingMemoryContext();
-        Object accContext = acc.createContext();
-        acc.init( wmContext,
-                  accContext,
-                  tuple,
-                  ksession );
+        AccumulateNode.AccumulateContext accContext = new AccumulateNode.AccumulateContext();
+        Object funcContext = acc.createFunctionContext();
 
-        acc.accumulate( wmContext,
-                        accContext,
-                        tuple,
-                        f1,
-                        ksession );
+        funcContext = acc.init(wmContext, accContext, funcContext, tuple, ksession);
+        accContext.setFunctionContext(funcContext);
+
+        Object value1 = acc.accumulate( wmContext,
+                                        accContext,
+                                        tuple,
+                                        f1,
+                                        ksession );
         acc.accumulate( wmContext,
                         accContext,
                         tuple,
@@ -115,11 +126,15 @@ public class MVELAccumulateBuilderTest {
                                      tuple,
                                      ksession ) );
 
-        acc.reverse( wmContext,
-                     accContext,
-                     tuple,
-                     f1,
-                     ksession );
+        LeftTuple match = new FromNodeLeftTuple();
+        match.setContextObject(value1);
+        acc.tryReverse(wmContext,
+                       accContext,
+                       tuple,
+                       f1,
+                       null,
+                       match,
+                       ksession);
 
         assertEquals( new Integer( 8 ),
                       acc.getResult( wmContext,

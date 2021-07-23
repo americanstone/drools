@@ -36,9 +36,9 @@ import org.kie.pmml.evaluator.assembler.container.PMMLPackageImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.kie.api.pmml.PMMLConstants.KIE_PMML_IMPLEMENTATION;
-import static org.kie.api.pmml.PMMLConstants.LEGACY;
 import static org.kie.api.pmml.PMMLConstants.NEW;
+import static org.kie.internal.pmml.PMMLImplementationsUtil.isjPMMLAvailableToClassLoader;
+import static org.kie.internal.pmml.PMMLImplementationsUtil.toEnable;
 import static org.kie.pmml.commons.utils.KiePMMLModelUtils.getSanitizedClassName;
 import static org.kie.pmml.commons.utils.KiePMMLModelUtils.getSanitizedPackageName;
 import static org.kie.pmml.evaluator.assembler.service.PMMLCompilerService.getKiePMMLModelsCompiledFromResource;
@@ -53,37 +53,13 @@ public class PMMLAssemblerService implements KieAssemblerService {
     public static final String PMML_COMPILER_CACHE_KEY = "PMML_COMPILER_CACHE_KEY";
     private static final Logger logger = LoggerFactory.getLogger(PMMLAssemblerService.class);
 
+    private static final String FOLDER_SEPARATOR = "/";
+
+    private static final String WINDOWS_FOLDER_SEPARATOR = "\\";
+
     private static boolean isBuildFromMaven() {
         final String property = System.getProperty("kie-maven-plugin-launcher", "false");
         return property.equals("true");
-    }
-
-    private static boolean isOtherImplementationPresent() {
-        try {
-            Thread.currentThread().getContextClassLoader().loadClass("org.kie.pmml.assembler.PMMLAssemblerService");
-            return true;
-        } catch (NoClassDefFoundError | ClassNotFoundException e) {
-            return false;
-        }
-    }
-
-    private static boolean isToEnable() {
-        if (!isOtherImplementationPresent()) {
-            return true;
-        } else {
-            final String property = System.getProperty(KIE_PMML_IMPLEMENTATION.getName(), LEGACY.getName());
-            return property.equals(NEW.getName());
-        }
-    }
-
-    private static boolean isjPMMLAvailableToClassLoader(ClassLoader classLoader) {
-        try {
-            classLoader.loadClass("org.kie.dmn.jpmml.DMNjPMMLInvocationEvaluator");
-            logger.info("jpmml libraries available on classpath, skipping kie-pmml parsing and compilation");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
     }
 
     /**
@@ -94,7 +70,21 @@ public class PMMLAssemblerService implements KieAssemblerService {
      */
     public static String[] getFactoryClassNamePackageName(Resource resource) {
         String sourcePath = resource.getSourcePath();
-        String fileName = sourcePath.substring(sourcePath.lastIndexOf('/') + 1);
+        if (sourcePath == null || sourcePath.isEmpty()) {
+            throw new IllegalArgumentException("Missing required sourcePath in resource " + resource + " -> " + resource.getClass().getName());
+        }
+        return getFactoryClassNamePackageName(sourcePath);
+    }
+
+    /**
+     * Returns an array where the first item is the <b>factory class</b> name and the second item is the <b>package</b> name,
+     * built starting from the given <b>sourcePath</b> <code>String</code>
+     * @param sourcePath
+     * @return
+     */
+    static String[] getFactoryClassNamePackageName(String sourcePath) {
+        sourcePath = sourcePath.replace(WINDOWS_FOLDER_SEPARATOR, FOLDER_SEPARATOR);
+        String fileName = sourcePath.substring(sourcePath.lastIndexOf(FOLDER_SEPARATOR) + 1);
         fileName = fileName.replace(".pmml", "");
         String packageName = getSanitizedPackageName(fileName);
         String factoryClassName = getSanitizedClassName(fileName + "Factory");
@@ -103,11 +93,11 @@ public class PMMLAssemblerService implements KieAssemblerService {
 
     @Override
     public ResourceType getResourceType() {
-        return isToEnable() ? ResourceType.PMML : ResourceType.NOOP;
+        return NEW.equals(toEnable(Thread.currentThread().getContextClassLoader())) ? ResourceType.PMML : ResourceType.NOOP;
     }
 
     @Override
-    public void addResources(Object kbuilder, Collection<ResourceWithConfiguration> resources, ResourceType type) {
+    public void addResourcesAfterRules(Object kbuilder, Collection<ResourceWithConfiguration> resources, ResourceType type) {
         KnowledgeBuilderImpl kbuilderImpl = (KnowledgeBuilderImpl) kbuilder;
         if (isjPMMLAvailableToClassLoader(kbuilderImpl.getRootClassLoader())) {
             return;
@@ -124,8 +114,8 @@ public class PMMLAssemblerService implements KieAssemblerService {
     }
 
     @Override
-    public void addResource(Object kbuilder, Resource resource, ResourceType type, ResourceConfiguration configuration) {
-        logger.warn("invoked legacy addResource (no control on the order of the assembler compilation): {}", resource.getSourcePath());
+    public void addResourceAfterRules(Object kbuilder, Resource resource, ResourceType type, ResourceConfiguration configuration) {
+        logger.warn("invoked legacy addResourceAfterRules (no control on the order of the assembler compilation): {}", resource.getSourcePath());
         KnowledgeBuilderImpl kbuilderImpl = (KnowledgeBuilderImpl) kbuilder;
         if (isjPMMLAvailableToClassLoader(kbuilderImpl.getRootClassLoader())) {
             return;

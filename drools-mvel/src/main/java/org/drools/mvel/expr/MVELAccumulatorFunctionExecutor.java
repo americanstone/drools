@@ -19,8 +19,6 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.drools.core.WorkingMemory;
 import org.drools.core.common.InternalFactHandle;
@@ -30,8 +28,9 @@ import org.drools.core.rule.Declaration;
 import org.drools.core.spi.MvelAccumulator;
 import org.drools.core.spi.Tuple;
 import org.drools.mvel.MVELDialectRuntimeData;
-import org.mvel2.MVEL;
 import org.mvel2.integration.VariableResolverFactory;
+
+import static org.drools.mvel.expr.MvelEvaluator.createMvelEvaluator;
 
 /**
  * An MVEL accumulator function executor implementation
@@ -47,7 +46,7 @@ public class MVELAccumulatorFunctionExecutor
     private MVELCompilationUnit                        unit;
     private org.kie.api.runtime.rule.AccumulateFunction function;
 
-    private Serializable                               expression;
+    private MvelEvaluator<Object> evaluator;
 
     public MVELAccumulatorFunctionExecutor() {
 
@@ -72,69 +71,57 @@ public class MVELAccumulatorFunctionExecutor
     }
 
     public void compile( MVELDialectRuntimeData runtimeData) {
-        expression = unit.getCompiledExpression( runtimeData );
+        evaluator = createMvelEvaluator(unit.getCompiledExpression( runtimeData ));
     }
 
     public void compile( MVELDialectRuntimeData runtimeData, RuleImpl rule) {
-        expression = unit.getCompiledExpression( runtimeData, rule.toRuleNameAndPathString() );
+        evaluator = createMvelEvaluator(unit.getCompiledExpression( runtimeData, rule.toRuleNameAndPathString() ));
     }
 
     /* (non-Javadoc)
      * @see org.kie.spi.Accumulator#createContext()
      */
-    public Serializable createContext() {
-        MVELAccumulatorFunctionContext context = new MVELAccumulatorFunctionContext();
-        context.context = this.function.createContext();
-        if ( this.function.supportsReverse() ) {
-            context.reverseSupport = new HashMap<>();
-        }
-        return context;
+    public Object createContext() {
+        return this.function.createContext();
     }
 
     /* (non-Javadoc)
      * @see org.kie.spi.Accumulator#init(java.lang.Object, org.kie.spi.Tuple, org.kie.rule.Declaration[], org.kie.WorkingMemory)
      */
-    public void init(Object workingMemoryContext,
-                     Object context,
-                     Tuple leftTuple,
-                     Declaration[] declarations,
-                     WorkingMemory workingMemory) throws Exception {
-        this.function.init( ((MVELAccumulatorFunctionContext) context).context );
+    public Object init(Object workingMemoryContext,
+                       Object context,
+                       Tuple leftTuple,
+                       Declaration[] declarations,
+                       WorkingMemory workingMemory) {
+        return this.function.initContext( (Serializable) context );
     }
 
     /* (non-Javadoc)
      * @see org.kie.spi.Accumulator#accumulate(java.lang.Object, org.kie.spi.Tuple, org.kie.common.InternalFactHandle, org.kie.rule.Declaration[], org.kie.rule.Declaration[], org.kie.WorkingMemory)
      */
-    public void accumulate(Object workingMemoryContext,
-                           Object context,
-                           Tuple tuple,
-                           InternalFactHandle handle,
-                           Declaration[] declarations,
-                           Declaration[] innerDeclarations,
-                           WorkingMemory workingMemory) throws Exception {
+    public Object accumulate(Object workingMemoryContext,
+                             Object context,
+                             Tuple tuple,
+                             InternalFactHandle handle,
+                             Declaration[] declarations,
+                             Declaration[] innerDeclarations,
+                             WorkingMemory workingMemory) {
         
         VariableResolverFactory factory = unit.getFactory( null, null, null, handle, tuple, null, (InternalWorkingMemory) workingMemory, workingMemory.getGlobalResolver()  );
         
-        final Object value = MVEL.executeExpression( this.expression,
-                                                     handle.getObject(),
-                                                     factory );
-        if ( this.function.supportsReverse() ) {
-            ((MVELAccumulatorFunctionContext) context).reverseSupport.put( handle.getId(), value );
-        }
-        this.function.accumulate( ((MVELAccumulatorFunctionContext) context).context,
-                                  value );
+        final Object value = evaluator.evaluate( handle.getObject(), factory );
+        return this.function.accumulateValue( (Serializable) context, value );
     }
 
-    public void reverse(Object workingMemoryContext,
-                        Object context,
-                        Tuple leftTuple,
-                        InternalFactHandle handle,
-                        Declaration[] declarations,
-                        Declaration[] innerDeclarations,
-                        WorkingMemory workingMemory) throws Exception {
-        final Object value = ((MVELAccumulatorFunctionContext) context).reverseSupport.remove( handle.getId() );
-        this.function.reverse( ((MVELAccumulatorFunctionContext) context).context,
-                               value );
+    public boolean tryReverse(Object workingMemoryContext,
+                              Object context,
+                              Tuple leftTuple,
+                              InternalFactHandle handle,
+                                    Object value,
+                              Declaration[] declarations,
+                              Declaration[] innerDeclarations,
+                              WorkingMemory workingMemory) {
+        return this.function.tryReverse( (Serializable) context, value );
     }
 
     /* (non-Javadoc)
@@ -144,8 +131,12 @@ public class MVELAccumulatorFunctionExecutor
                             Object context,
                             Tuple leftTuple,
                             Declaration[] declarations,
-                            WorkingMemory workingMemory) throws Exception {
-        return this.function.getResult( ((MVELAccumulatorFunctionContext) context).context );
+                            WorkingMemory workingMemory) {
+        try {
+            return this.function.getResult( (Serializable) context);
+        } catch (Exception e) {
+            throw new RuntimeException( e );
+        }
     }
 
     public boolean supportsReverse() {
@@ -164,28 +155,6 @@ public class MVELAccumulatorFunctionExecutor
     @Override
     public void replaceDeclaration( Declaration declaration, Declaration resolved ) {
         unit.replaceDeclaration( declaration, resolved );
-    }
-
-    private static class MVELAccumulatorFunctionContext
-        implements
-        Externalizable {
-        public Serializable               context;
-        public Map<Long, Object> reverseSupport;
-
-        public MVELAccumulatorFunctionContext() {
-        }
-
-        @SuppressWarnings("unchecked")
-        public void readExternal(ObjectInput in) throws IOException,
-                                                ClassNotFoundException {
-            context = (Serializable) in.readObject();
-            reverseSupport = (Map<Long, Object>) in.readObject();
-        }
-
-        public void writeExternal(ObjectOutput out) throws IOException {
-            out.writeObject( context );
-            out.writeObject( reverseSupport );
-        }
     }
 
 }

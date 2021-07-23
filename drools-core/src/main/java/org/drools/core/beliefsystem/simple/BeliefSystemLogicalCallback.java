@@ -58,7 +58,7 @@ public class BeliefSystemLogicalCallback extends PropagationEntry.AbstractPropag
     public BeliefSystemLogicalCallback(MarshallerReaderContext context) throws IOException {
         this.handle = context.getHandles().get( context.readLong() );
         this.context = context.getPropagationContexts().get( context.readLong() );
-        this.activation = (Activation) context.getTerminalTupleMap().get( context.readInt() ).getContextObject();
+        this.activation = (Activation) context.getTerminalTupleMap().get( context.readInt() );
     }
 
     public boolean isUpdate() {
@@ -92,7 +92,7 @@ public class BeliefSystemLogicalCallback extends PropagationEntry.AbstractPropag
             if ( fullyRetract ) {
                 nep.delete( this.handle, context.getRuleOrigin(), this.activation.getTuple().getTupleSink() );
             } else {
-                ObjectTypeConf typeConf = nep.getObjectTypeConfigurationRegistry().getObjectTypeConf( nep.getEntryPoint(), handle.getObject() );
+                ObjectTypeConf typeConf = nep.getObjectTypeConfigurationRegistry().getOrCreateObjectTypeConf( nep.getEntryPoint(), handle.getObject() );
                 nep.getEntryPointNode().retractObject( handle, context, typeConf, workingMemory );
             }
         }
